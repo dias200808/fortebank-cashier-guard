@@ -8,9 +8,11 @@ from app.config import Settings
 from app.jobs import ProcessFn
 from app.pipeline.change import change_times, dense_times, door_open_series, zone_change
 from app.pipeline.frames import VideoFrames, load_frames
-from app.pipeline.people import TorchvisionPersonDetector, analyze_people, track_people
+from app.pipeline.objects import ObjectEvent, ObjectTimeline, OwlDetector, detect_timeline, key_times, object_events
+from app.pipeline.people import PeopleTimeline, Track, TorchvisionPersonDetector, analyze_people, track_people
 from app.pipeline.probes import Fact, load_facts, probe_times, run_probes
 from app.pipeline.report import build_violations
+from app.pipeline.roles import identify_cashier
 from app.pipeline.rules import Candidate, Rule, RuleContext, evaluate, load_rules
 from app.pipeline.scene import Zones, locate_zones
 from app.pipeline.timeline import intervals
@@ -24,17 +26,31 @@ PROBE_CHUNK, PROBE_BUDGET_FRAC = 8, 0.6
 VERIFY_CHUNK = 8                          # S7 candidates per VLM batch; the budget is checked between chunks
 JOB_MARGIN_S = 20.0                       # job limit minus this = analysis budget (S9 + result write + slack)
 SCENE_THR, HAND_THR = 0.03, 0.05          # probe 2026-10-17; recalibrate in Task 16
+OBJ_START_FRAC, OBJ_STOP_FRAC = 0.15, 0.25  # S2b starts only before 15 % of the budget and stops at 25 %
+OBJ_BATCH = 4                             # 4 x 960^2 (~14k ViT tokens) already fills the 3090; 8 only doubles the peak
 
 
 @dataclass
 class Models:
     vlm: VLM
     detector: object
+    objects: object | None = None             # OwlDetector when OBJ_DETECTOR=owlv2
+
+
+def _build_objects(settings: Settings):
+    """OWLv2 is optional: a missing package or missing weights log the error and the service runs without it."""
+    if settings.obj_detector.lower() != "owlv2":
+        return None
+    try:
+        return OwlDetector(settings.obj_model, settings.device, settings.obj_threshold)
+    except Exception:
+        log.exception("object detector %s disabled", settings.obj_model)
+        return None
 
 
 def build_models(settings: Settings) -> Models:
     vlm = FakeVLM() if settings.vlm_backend == "fake" else OpenAIVLM(settings.vlm_url, settings.vlm_model, settings.vlm_workers)
-    return Models(vlm, TorchvisionPersonDetector(settings.detector, settings.device))
+    return Models(vlm, TorchvisionPersonDetector(settings.detector, settings.device), _build_objects(settings))
 
 
 def _coarse_first(times: list[float], fps: float, duration: float) -> list[float]:
@@ -79,6 +95,30 @@ def _verify_chunked(cands: list[Candidate], rules_by_id: dict[str, Rule], frames
     return out
 
 
+def _objects(frames: VideoFrames, models: Models, settings: Settings, zones: Zones, people: PeopleTimeline,
+             tracks: list[Track], extra: list[float], t0: float, budget: float,
+             debug: dict) -> tuple[ObjectTimeline | None, list[ObjectEvent]]:
+    """S2b: object boxes on key frames -> timeline + events (extra probe times). Never fails the analysis."""
+    if models.objects is None:
+        return None, []
+    if time.monotonic() - t0 > OBJ_START_FRAC * budget:
+        debug["objects_skipped"] = True
+        return None, []
+    t1 = time.monotonic()
+    try:
+        times = key_times(frames, settings.obj_fps, extra)
+        tl, debug["objects_truncated"] = detect_timeline(frames, models.objects, times, OBJ_BATCH,
+                                                         deadline=t0 + OBJ_STOP_FRAC * budget)
+        events = object_events(tl, zones.desk, zones.safe, people, tracks)
+    except Exception as e:
+        log.exception("object stage skipped")
+        debug["objects_error"] = repr(e)[:200]
+        return None, []
+    debug.update(obj_frames=len(tl.times), obj_events=[e.__dict__ for e in events],
+                 t_objects=round(time.monotonic() - t1, 1))
+    return tl, events
+
+
 def _detail(c: Candidate, ok: bool, score: float, source: str) -> dict:
     return {"rule": c.rule_id, "t": c.t, "score": round(score, 3), "strong": c.strong, "source": source, "verified": ok}
 
@@ -94,11 +134,18 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
     h, w = frames.images[0].shape[:2]
     zones = locate_zones(frames.at(min(1.0, frames.duration / 2)), models.vlm, settings.vlm_coord_mode)
     tracks = track_people(frames, models.detector, settings.det_fps, batch=settings.det_batch)
-    people = analyze_people(tracks, frames.times, zones.desk, zones.safe, frames.duration, w / h)
+    # Qwen picks the cashier among numbered person boxes (angle-independent); None keeps the desk-time heuristic
+    cashier_hint, _, debug["roles"] = identify_cashier(frames, tracks, zones, models.vlm)
+    people = analyze_people(tracks, frames.times, zones.desk, zones.safe, frames.duration, w / h,
+                            cashier_hint=cashier_hint)
 
-    extra = [e.t for e in people.events]
-    for box in (zones.desk, zones.safe, zones.door):
-        extra += dense_times(change_times(zone_change(frames, box, tracks, mask_people=True), SCENE_THR))
+    changes = [change_times(zone_change(frames, box, tracks, mask_people=True), SCENE_THR)
+               for box in (zones.desk, zones.safe, zones.door)]
+    objects, obj_events = _objects(frames, models, settings, zones, people, tracks,
+                                   [e.t for e in people.events] + [t for ch in changes for t in ch], t0, b, debug)
+    extra = [e.t for e in people.events] + dense_times([e.t for e in obj_events])
+    for ch in changes:
+        extra += dense_times(ch)
     extra += dense_times(change_times(zone_change(frames, zones.desk, tracks, mask_people=False), HAND_THR))
     times = _coarse_first(probe_times(frames.duration, settings.probe_fps, extra, settings.max_probe_frames),
                           settings.probe_fps, frames.duration)
@@ -142,7 +189,7 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
         s8 = _verify_chunked([c for c, _ in hits], rules_by_id, frames, zones, facts_by_id, models.vlm, t0, b, debug)
         accepted += [(c, score) for c, ok, score in s8 if ok]          # S8 hits are never strong: S7 must confirm
         details += [_detail(c, ok, score, "s8") for c, ok, score in s8]
-    violations = build_violations(accepted, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id)
+    violations = build_violations(accepted, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id, objects=objects)
     debug.update(candidates=len(cands), accepted=len(accepted), candidates_detail=details,
                  t_total=round(time.monotonic() - t0, 1))
     return ("violation" if violations else "no_violation"), violations, debug
@@ -157,8 +204,8 @@ def build_processor(settings: Settings, models: Models | None = None) -> Process
         budget = max(0.0, remaining_s(path, settings) - JOB_MARGIN_S)
         verdict, violations, debug = analyze(path, models, settings, rules, facts, budget_s=budget)
         log.info("job %s: %s", job_id, {k: debug.get(k) for k in (
-            "budget_s", "t_probes", "t_total", "probe_frames", "probes_truncated", "verification_skipped",
-            "verification_truncated", "verify_error", "unknown_error", "candidates", "accepted")})
+            "budget_s", "t_objects", "t_probes", "t_total", "probe_frames", "probes_truncated", "verification_skipped",
+            "verification_truncated", "verify_error", "unknown_error", "objects_error", "candidates", "accepted")})
         return JobResult(job_id=job_id, status="done", verdict=verdict, violations=violations)
 
     return process

@@ -1,21 +1,27 @@
 # family: how the rule is triggered (see app/pipeline/rules.py FAMILIES)
 # strength: В — clause directly describes what is seen; С — needs context; Н — indirect, phrase as "возможное несоответствие"
 # verify: questions for S7; window = seconds relative to the candidate time; expect = yes|no; zone defaults to the fact's zone
+#         required: true = veto (the candidate is rejected when this question disagrees, whatever the majority)
+# params.s8: false = the S8 channel never proposes the rule (its context cannot be confirmed on one clip)
 - id: R01
   type: "Наличные или ценности оставлены без присмотра"
-  family: on_cashier_left
+  summary: "Кассир покинул рабочее место, а на столе вне запирающегося хранилища остаются наличные или инкассаторская сумка, в том числе положенные на стол уже в его отсутствие."
+  signals: "S2 фиксирует уход кассира (cashier_left), и в этот момент зонды по кропу стола видят банкноты (F_cash_desk) или инкассаторскую сумку (F_bag_desk). Второе семейство ловит те же предметы, если они появились на столе после ухода (≥ 3 с, ≥ 2 с в конце короткого ролика), кассир так и не вернулся, а в помещении в это время был посетитель (положить предмет на стол пустой комнаты некому: без посетителя это шум зонда на пустом столе после штатного ухода)."
+  family: [on_cashier_left, appeared_while_away]
   facts: [F_cash_desk, F_bag_desk]
-  params: {tol: 1.5, strong_k: 3}
+  params: {tol: 1.5, strong_k: 3, min_s: 3.0, end_min_s: 2.0}
   strength: "В"
   norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 20 ч. 2", url: "https://adilet.zan.kz/rus/docs/V1900019680",
          quote: "Все ранее принятые наличные деньги хранятся в специальных устройствах … закрывающихся на ключ"}
-  template: "В {t} с кассир покинул рабочее место; на столе остаются наличные или инкассаторская сумка (кадр {te} с). Наличные должны храниться в запирающемся устройстве на рабочем месте."
+  template: "В {t} с на столе без присмотра кассира остаются наличные или инкассаторская сумка (кадр {te} с). Наличные должны храниться в запирающемся устройстве на рабочем месте."
   verify:
     - {q: "Are banknotes or a cash bag lying on the desk?", window: [0, 5]}
     - {q: "Is money left on the table surface?", window: [0, 5]}
     - {q: "Is the cashier's chair empty while money remains on the desk?", window: [1, 6], zone: full}
 - id: R02
   type: "Сейф оставлен открытым без присмотра"
+  summary: "Дверца сейфа открыта, а рядом никого нет: кассир ушёл или вернулся к столу, не закрыв сейф."
+  signals: "F_safe_open (кроп сейфа) держится в момент ухода кассира, или кассир непрерывно отсутствует ≥ 3 с, или ≥ 3 с у открытого сейфа никто не стоит и никто его не касается (F_safe_attended, F_safe_touched, полный кадр)."
   family: [on_cashier_left, unattended_state, state_left_unattended]
   facts: [F_safe_open]
   params: {tol: 1.5, min_s: 3.0, strong_k: 3, attend_fact: [F_safe_attended, F_safe_touched]}
@@ -29,6 +35,8 @@
     - {q: "Is nobody standing next to the open safe?", window: [0, 5], zone: full}
 - id: R03
   type: "Ключ оставлен в замке сейфа"
+  summary: "Кассир ушёл, а в замке сейфа на рабочем месте остался ключ."
+  signals: "Уход кассира (cashier_left), и зонд F_key по кропу сейфа видит ключ в замке."
   family: on_cashier_left
   facts: [F_key]
   params: {tol: 2.0, strong_k: 3}
@@ -42,6 +50,8 @@
     - {q: "Is a key left in the safe while nobody is near it?", window: [1, 6], zone: full}
 - id: R04
   type: "Рабочая станция не заблокирована при уходе"
+  summary: "Кассир ушёл, оставив экран ноутбука включённым с рабочим содержимым."
+  signals: "Уход кассира, и зонд F_screen_on по кропу ноутбука видит включённый экран с таблицей или программой (не экран блокировки и не чёрный экран)."
   family: on_cashier_left
   facts: [F_screen_on]
   params: {tol: 2.0, strong_k: 3}
@@ -55,6 +65,8 @@
     - {q: "Is the screen bright with an open program?", window: [1, 6]}
 - id: R05
   type: "Кассир покинул рабочее место до окончания обслуживания клиента"
+  summary: "Кассир уходит с рабочего места, а клиент остаётся у стола."
+  signals: "Событие cashier_left происходит при посетителе, который был в кадре ≥ 5 с до ухода и остаётся ≥ 2 с после него."
   family: cashier_left_with_client
   facts: []
   params: {client_stays_s: 2.0, served_s: 5.0}
@@ -68,6 +80,8 @@
     - {q: "Is a client waiting alone at the cash desk?", window: [1, 5], zone: full}
 - id: R06
   type: "Наличные на виду при входе другого лица"
+  summary: "Входит следующий посетитель, а на столе открыто лежат наличные предыдущей операции."
+  signals: "Событие entered (предыдущего посетителя нет за 1,5 с до входа), и интервал F_cash_desk начался ещё до входа."
   family: on_entry
   facts: [F_cash_desk]
   params: {before_s: 1.5, strong_k: 3}
@@ -79,8 +93,25 @@
     - {q: "Are banknotes lying openly on the desk?", window: [-2, 2]}
     - {q: "Is cash visible on the table?", window: [-2, 2]}
     - {q: "Is money left on the desk while a new person comes in?", window: [-1, 3], zone: full}
+- id: R07
+  type: "Смешение наличных разных операций"
+  summary: "Новый клиент вносит наличные, пока на столе ещё лежат деньги предыдущей операции: деньги разных клиентов смешиваются, и приём по каждому документу отдельно не обеспечен."
+  signals: "Наличные предыдущего клиента лежат на столе при входе следующего (условие R06) и не убираются, а в течение этого же интервала новый клиент передаёт деньги через стол (F_cash_from_client или F_handover). Берётся последняя передача: ранняя обычно означает показ удостоверения."
+  family: deposit_onto_leftover
+  facts: [F_cash_desk, F_cash_from_client, F_handover]
+  params: {before_s: 1.5, min_after_s: 2.0, within_s: 60.0, tol: 1.5, strong_k: 99}
+  strength: "С"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 21; п. 20 ч. 2", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "кассовый работник принимает наличные деньги по каждому приходному кассовому документу отдельно; На рабочем месте кассового работника находятся наличные деньги клиента"}
+  template: "В {t} с новый клиент передаёт наличные, а на столе ещё лежат деньги предыдущей операции (кадр {te} с); наличные разных операций смешиваются, приём по каждому документу отдельно не обеспечен."
+  verify:
+    - {q: "Is the client putting banknotes onto a stack of banknotes that was already lying on the desk?", window: [-3, 3], zone: full}
+    - {q: "Are banknotes lying on the desk?", window: [-8, -2]}
+    - {q: "Is a client handing banknotes to the cashier across the desk?", window: [-3, 2], zone: full}
 - id: R08
   type: "Дверь кассы оставлена открытой"
+  summary: "Дверь в кассовое помещение остаётся открытой ≥ 8 с после прохода (≥ 4 с, если так и не закрылась до конца ролика)."
+  signals: "Створка двери ≥ 8 с отличается от первого кадра (пиксельный ряд по зоне двери, без VLM)."
   family: door_left_open
   facts: []
   params: {thr: 0.15, min_s: 8.0, end_min_s: 4.0, lag_s: 2.0}
@@ -90,6 +121,8 @@
   template: "С {t} с дверь в кассовое помещение остаётся открытой (кадр {te} с); назначение требования о закрывающейся двери не обеспечивается."
 - id: R09
   type: "Постороннее лицо в кассовом помещении"
+  summary: "Во время обслуживания одного посетителя в кассу входит ещё один человек."
+  signals: "Событие entered, когда другой посетитель уже ≥ 5 с в кадре, после чего посетителей становится ≥ 2."
   family: entry_during_service
   facts: []
   params: {min_stay_s: 1.0, served_s: 5.0}
@@ -103,6 +136,8 @@
     - {q: "Is a second visitor standing in the room?", window: [0, 4], zone: full}
 - id: R10
   type: "Личные вещи на рабочем месте кассира"
+  summary: "На рабочем столе кассира лежат личные вещи: сумка, рюкзак, верхняя одежда."
+  signals: "Зонд F_items по полному кадру держится ≥ 2 с."
   family: presence
   facts: [F_items]
   params: {min_s: 2.0, strong_k: 3}
@@ -116,6 +151,8 @@
     - {q: "Is there clothing or a bag on the table?", window: [0, 4]}
 - id: R11
   type: "Мобильный телефон в кассовом помещении"
+  summary: "Кассир пользуется смартфоном в кассовом помещении, хотя допускаются только средства связи без фото- и видеофиксации. Съёмка наличных или документов на телефон — частный случай этого правила."
+  signals: "Зонд F_phone по полному кадру держится ≥ 2 с; S7 подтверждает, что телефон в руке кассира."
   family: presence
   facts: [F_phone]
   params: {min_s: 2.0, strong_k: 3}
@@ -129,6 +166,8 @@
     - {q: "Is there a phone in the cashier's hand?", window: [0, 4]}
 - id: R12
   type: "Еда или напитки на рабочем месте"
+  summary: "На рабочем месте кассира, рядом с наличными, напиток или еда (чашка, бутылка)."
+  signals: "Зонд F_cup держится ≥ 2 с. Если чашка видна с первой секунды, нужно хотя бы раз увидеть, что из неё пьют (F_drinking): иначе это может быть предмет обстановки."
   family: presence
   facts: [F_cup]
   params: {min_s: 2.0, strong_k: 3, start_needs: F_drinking}
@@ -142,6 +181,8 @@
     - {q: "Is there a drink at the workplace?", window: [0, 4]}
 - id: R17
   type: "Печати или журнал оставлены без присмотра"
+  summary: "Кассир ушёл, оставив на столе печати, штампы или журнал."
+  signals: "Уход кассира, и F_docs_desk по кропу стола видит журнал, штамп или печать."
   family: on_cashier_left
   facts: [F_docs_desk]
   params: {tol: 1.5, strong_k: 3}
@@ -155,6 +196,8 @@
     - {q: "Is a stamp left unattended on the desk?", window: [1, 6]}
 - id: R18
   type: "Обзор камеры нарушен"
+  summary: "Изображение с камеры ≥ 2 с тёмное или перекрыто: работа кассы выпадает из поля зрения видеонаблюдения."
+  signals: "Яркость кадра < 25 или резкость < 10 держится ≥ 2 с (статистика кадров, без VLM). Свет, выключенный уже после ухода кассира, не считается."
   family: quality
   facts: []
   params: {min_s: 2.0, dark: 25.0, flat: 10.0}
@@ -165,6 +208,8 @@
   verify: []
 - id: R13
   type: "Пересчёт наличных не в присутствии клиента"
+  summary: "Клиент ушёл, и только после этого кассир пересчитывает наличные."
+  signals: "После события exited посетителей не остаётся, и в течение 10 с начинается F_counting (вручную или на счётной машинке); если на столе инкассаторская сумка, правило не срабатывает."
   family: count_after_client_left
   facts: [F_counting]
   params: {after_s: 1.0, strong_k: 99}
@@ -178,6 +223,9 @@
     - {q: "Is the client absent while money is being counted?", window: [0, 4], zone: full}
 - id: R14
   type: "Документ клиента на видео не зафиксирован"
+  enabled: false   # false alarms on clean X-3, X-39 and test clips; the ID fact also fires on the only positive (X-2)
+  summary: "Клиент передаёт наличные, а предъявление удостоверения личности на видео не зафиксировано."
+  signals: "Интервал F_handover при посетителе у стола, и в окне от −60 до +30 с нет F_id_card; вопрос S7 «видно ли удостоверение за 20 с» работает как вето."
   family: handover_without_id
   facts: [F_handover]
   params: {lookback_s: 60.0, lookahead_s: 30.0, strong_k: 99}
@@ -190,6 +238,8 @@
     - {q: "Is an ID card or identity document visible on the desk or in someone's hand?", window: [-20, 2], zone: full, expect: "no"}
 - id: R15
   type: "Сумка инкассации принята без видимой проверки"
+  summary: "Инкассатор оставляет сумку и уходит за несколько секунд; проверка целостности сумки и пломбы при нём не видна."
+  signals: "Посетитель пробыл в кадре ≤ 10 с, за это время на столе появилась сумка (F_bag_desk) и осталась после его выхода; вето S7 — осмотр пломбы или обмен бумагами."
   family: collector_quick_leave
   facts: [F_bag_desk]
   params: {max_stay_s: 10.0, strong_k: 99}
@@ -200,8 +250,25 @@
   verify:
     - {q: "Did a person put a bag on the desk and walk away?", window: [-2, 3], zone: full}
     - {q: "Is the cashier inspecting the bag's seal or exchanging papers with the visitor?", window: [-2, 3], zone: full, expect: "no"}
+- id: R16
+  type: "Наличные убраны в сейф без пересчёта и контролирующего работника"
+  summary: "Кассир без клиента и без второго работника убирает в сейф наличные со стола (например, из вскрытой сумки), не пересчитав их на видео."
+  signals: "Наличные лежат на столе коротко (≤ 6 с, всего ≤ 12 с за минуту), и сразу после этого кассир оказывается у сейфа (F_safe_attended). Правило молчит, если был пересчёт (F_counting или банкноты в руках F_cash_hands ≥ 8 с) или денежная операция с клиентом (F_cash_from_client, F_cash_to_client, F_handover) от 30 с до стола до 20 с после подхода к сейфу: так выглядят приём и выдача (сейф → стол → сейф закрыть → пересчёт и выдача), это исключение п. 42. S7 подтверждает, что кассир кладёт что-то в сейф и рядом нет второго работника; канал S8 это правило не предлагает, потому что «без пересчёта» по короткому клипу не подтвердить."
+  family: desk_to_safe_without_count
+  facts: [F_cash_desk, F_safe_attended, F_counting, F_cash_hands, F_cash_from_client, F_cash_to_client, F_handover]
+  params: {max_desk_s: 6.0, max_total_s: 12.0, lookback_s: 60.0, gap_s: 5.0, client_s: 30.0, after_s: 20.0, hands_min_s: 8.0, lag_s: 1.0, strong_k: 99, s8: false}
+  strength: "Н"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 42 (двойной контроль)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Кассовые операции по пересчету, сортировке и упаковке наличных денег осуществляются кассовым работником в присутствии контролирующего работника, за исключением случаев совершения кассовых операций по приему и выдаче наличных денег клиенту"}
+  template: "В {t} с кассир убирает в сейф наличные, которые лежали на столе лишь несколько секунд, без пересчёта и без второго работника на видео (кадр {te} с); пересчёт и упаковка наличных проводятся в присутствии контролирующего работника."
+  verify:
+    - {q: "Is the cashier putting something into the safe?", window: [0, 5], zone: full}
+    - {q: "Is the cashier standing at the open safe and placing an item inside it?", window: [0, 5], zone: full}
+    - {q: "Is another employee standing next to the cashier and watching her work?", window: [-5, 3], zone: full, expect: "no"}
 - id: R20
   type: "Возврат части принятых наличных клиенту после пересчёта"
+  summary: "После пересчёта принятых наличных кассир отдаёт часть пересчитанных денег обратно тому же клиенту без видимого основания."
+  signals: "Цепочка F_cash_from_client → F_counting → F_cash_to_client тому же клиенту, без входов и выходов и без ухода кассира между звеньями; вето S7 — деньги взяты из сейфа или ящика."
   family: return_after_count
   facts: [F_cash_from_client, F_counting, F_cash_to_client]
   params: {count_lead_s: 2.0, count_within_s: 30.0, after_deposit_s: 1.0, min_count_s: 3.0, return_within_s: 20.0, strong_k: 99}
@@ -212,3 +279,34 @@
   verify:
     - {q: "Is the cashier giving part of a stack of counted banknotes back to the client?", window: [-2, 3], zone: full}
     - {q: "Did the cashier take banknotes out of the safe or a desk drawer (not from the counting machine)?", window: [-20, -1], zone: full, expect: "no"}
+- id: R21
+  type: "Экран рабочего ноутбука показывается посетителю"
+  summary: "Кассир показывает посетителю экран рабочего ноутбука (указывает на экран, посетитель смотрит): носитель с банковской защищаемой информацией открыт для постороннего взгляда."
+  signals: "Зонд по полному кадру F_screen_shown («кассир показывает экран другому человеку, указывая на него») держится ≥ 1 с, и S2 видит в это время посетителя; S7 подтверждает это двумя из трёх формулировок (без подтверждения S7 правило не срабатывает)."
+  family: presence
+  facts: [F_screen_shown]
+  params: {min_s: 1.0, need_visitor: true, strong_k: 99}
+  strength: "Н"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 2 пп. 17); п. 80", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "ценности – платежные документы, бланки документов, … электронные (цифровые) носители, на которых хранится банковская защищаемая информация; … определяется внутренними документами банка, обеспечивающими исключение их несанкционированного использования"}
+  template: "С {t} с кассир показывает посетителю экран рабочего ноутбука (кадр {te} с); электронные носители с банковской защищаемой информацией относятся к ценностям, порядок их хранения должен исключать несанкционированное использование."
+  verify:
+    - {q: "Is the cashier showing the laptop screen to the visitor, pointing at the screen?", window: [-1, 4], zone: full}
+    - {q: "Is the laptop screen turned toward a visitor so that the visitor can read it?", window: [-1, 4], zone: full}
+    - {q: "Is the cashier pointing at the laptop screen with her hand while a visitor watches?", window: [-1, 4], zone: full}
+- id: R22
+  type: "Пересчёт наличных без контролирующего работника при открытом сейфе"
+  summary: "Кассир достаёт наличные из сейфа, оставляет сейф открытым и одна пересчитывает деньги за столом: ни клиента, ни контролирующего работника в помещении нет."
+  signals: "Банкноты в руках кассира (F_cash_hands, кроп стола) или пересчёт (F_counting) держатся ≥ 2 с, пока дверца сейфа, открытая ещё до пересчёта, остаётся открытой (F_safe_open), у сейфа никого нет (F_safe_attended, F_safe_touched), кассир сидит за столом, а других людей в кадре нет (S2). Правило молчит, если за 30 с до или после пересчёта была передача денег или документа через стол (исключение п. 42 для операций с клиентом) или на столе лежала инкассаторская сумка. Такой же пересчёт в одиночку после закрытия сейфа (чистое Х-21) размечен как норма, поэтому без открытого сейфа правило не срабатывает: S7 отклоняет кандидата, если по кропу сейфа дверца не открыта, при любых ответах на остальные вопросы, а канал S8 это правило не предлагает."
+  family: count_alone_open_safe
+  facts: [F_cash_hands, F_counting, F_safe_open, F_safe_attended, F_safe_touched, F_bag_desk, F_cash_from_client, F_cash_to_client, F_handover]
+  params: {min_s: 2.0, client_s: 30.0, max_busy: 0.25, count_facts: [F_cash_hands, F_counting], attend_fact: [F_safe_attended, F_safe_touched], strong_k: 99, s8: false}
+  strength: "Н"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 42 (двойной контроль)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Кассовые операции по пересчету, сортировке и упаковке наличных денег осуществляются кассовым работником в присутствии контролирующего работника, за исключением случаев совершения кассовых операций по приему и выдаче наличных денег клиенту"}
+  template: "С {t} с кассир одна пересчитывает наличные, взятые из сейфа, а сейф остаётся открытым (кадр {te} с); клиента и контролирующего работника в помещении нет. Пересчёт наличных вне операций с клиентом проводится в присутствии контролирующего работника."
+  verify:
+    - {q: "Is the cashier counting banknotes in her hands?", window: [0, 4]}
+    - {q: "Is the cashier sitting at the desk holding a stack of banknotes?", window: [0, 4]}
+    - {q: "Is the door of the safe open?", window: [0, 4], zone: safe, required: true}
+    - {q: "Is another employee standing next to the cashier and watching her work?", window: [-3, 3], zone: full, expect: "no"}

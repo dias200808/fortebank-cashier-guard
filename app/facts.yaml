@@ -52,3 +52,9 @@
 - id: F_drinking
   zone: full
   question: "Is a person drinking from a cup, mug or bottle, holding it at the mouth?"
+- id: F_screen_shown
+  zone: full
+  question: "Is the cashier showing the laptop screen to another person, pointing at the screen while a visitor looks at it?"
+- id: F_cash_hands
+  zone: desk
+  question: "Is the cashier holding banknotes (paper money) in her hands?"

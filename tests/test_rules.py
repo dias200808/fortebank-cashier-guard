@@ -6,7 +6,7 @@ from app.pipeline.rules import FAMILIES, RuleContext, evaluate, load_rules
 from app.pipeline.timeline import Interval, intervals
 
 T = [round(i * 0.2, 3) for i in range(150)]        # 30 s
-RULES = {r.id: r for r in load_rules(Path("app/rules.yaml"))}
+RULES = {r.id: r for r in load_rules(Path("app/rules.yaml"), include_disabled=True)}
 
 
 def people(events, away_from=None, others=None):

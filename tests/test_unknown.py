@@ -8,7 +8,8 @@ from app.pipeline.vlm import FakeVLM
 
 VF = VideoFrames([i * 0.2 for i in range(100)], [np.zeros((40, 30, 3), np.uint8)] * 100, 20.0)
 PEOPLE = PeopleTimeline(VF.times, 1, [False] * 100, [0] * 100, [Event(5.0, "entered", 2)])
-R = Rule("R05", "Кассир покинул место", ["cashier_left_with_client"], [], {}, {"act": "a", "point": "p"}, "В", "{t}")
+R = Rule("R05", "Кассир покинул место", ["cashier_left_with_client"], [], {}, {"act": "a", "point": "p"}, "В", "{t}",
+         verify=[{"q": "Is a visitor still at the desk?"}])
 
 
 def test_description_matched_to_rule():
@@ -41,3 +42,14 @@ def test_deadline_in_the_past_makes_no_calls():
 def test_none_description_does_not_crash():
     vlm = FakeVLM(answer=lambda imgs, q: 0.1, reply=lambda imgs, p: None)
     assert scan_unknown(VF, PEOPLE, [R], vlm, already=set()) == []
+
+
+def test_rules_s7_cannot_confirm_are_not_proposed():
+    """No verify questions (door, brightness) or s8: false (R16 "not counted", R22 open-safe count): S7 could not
+    check the hit, so S8 must not create it."""
+    door = Rule("R08", "Дверь открыта", ["door_left_open"], [], {}, {"act": "a", "point": "p"}, "Н", "{t}")
+    ctx = Rule("R22", "Пересчёт", ["count_alone_open_safe"], [], {"s8": False}, {"act": "a", "point": "p"}, "Н", "{t}",
+               verify=[{"q": "q"}])
+    vlm = FakeVLM(answer=lambda imgs, q: 0.95, reply=lambda imgs, p: "x")
+    assert [c.rule_id for c, _ in scan_unknown(VF, PEOPLE, [door, ctx, R], vlm, already=set())] == ["R05"]
+    assert scan_unknown(VF, PEOPLE, [door, ctx], vlm, already=set()) == []

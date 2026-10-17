@@ -46,6 +46,18 @@ def p_yes(top_logprobs: list[dict]) -> float:
     return 0.5 if py + pn == 0 else py / (py + pn)
 
 
+def p_choices(top_logprobs: list[dict], options: list[str], min_mass: float = 0.0) -> dict[str, float] | None:
+    """Normalize first-token probability mass over single-token options (e.g. digits; "3" and " 3" both count).
+    None if they hold no mass or less than min_mass (the model was not answering with an option)."""
+    mass = {o.lower(): 0.0 for o in options}
+    for item in top_logprobs:
+        tok = item["token"].strip().strip(".").lower()
+        if tok in mass:
+            mass[tok] += math.exp(item["logprob"])
+    total = sum(mass.values())
+    return None if total == 0 or total < min_mass else {o: mass[o.lower()] / total for o in options}
+
+
 class OpenAIVLM:
     def __init__(self, base_url: str, model: str, workers: int = 16, timeout: float = 30.0,
                  retries: int = 2, backoff: float = 0.5, client: httpx.Client | None = None):
@@ -117,6 +129,22 @@ class OpenAIVLM:
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
 
+    def choice_probs(self, images: list[np.ndarray], prompt: str, options: list[str]) -> dict[str, float] | None:
+        """P(answer) over single-token options from the first token's top logprobs (None when the options hold under
+        half of its mass); one-hot from the reply text when the server sends no logprobs; None when the reply is none
+        of the options."""
+        resp = self._chat(images, prompt, 1, True)
+        try:
+            choice = resp["choices"][0]
+            content = (choice.get("logprobs") or {}).get("content") or []
+            top = content[0].get("top_logprobs") if content else None
+            if top:
+                return p_choices(top, options, min_mass=0.5)
+            reply = (choice["message"]["content"] or "").strip().strip(".").lower()
+            return {o: float(o.lower() == reply) for o in options} if reply in {o.lower() for o in options} else None
+        except (KeyError, IndexError, TypeError, AttributeError) as e:
+            raise VLMError(f"malformed VLM response: {e!r}") from e
+
     def text(self, images: list[np.ndarray], prompt: str, max_tokens: int = 256) -> str:
         resp = self._chat(images, prompt, max_tokens, False)
         try:
@@ -127,8 +155,16 @@ class OpenAIVLM:
 
 class FakeVLM:
     def __init__(self, answer: Callable[[list[np.ndarray], str], float] = lambda i, q: 0.0,
-                 reply: Callable[[list[np.ndarray], str], str] = lambda i, p: ""):
-        self.answer, self.reply, self.calls = answer, reply, 0
+                 reply: Callable[[list[np.ndarray], str], str] = lambda i, p: "",
+                 choice: Callable[[list[np.ndarray], str, list[str]], dict[str, float] | None] | None = None):
+        self.answer, self.reply, self.choice, self.calls = answer, reply, choice, 0
+
+    def choice_probs(self, images, prompt, options):
+        """None (no answer, not counted as a call) unless a `choice` callable was given."""
+        if self.choice is None:
+            return None
+        self.calls += 1
+        return self.choice(images, prompt, options)
 
     def yes_prob(self, images, question):
         self.calls += 1

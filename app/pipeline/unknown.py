@@ -16,7 +16,9 @@ MATCH = ("Description of a bank cashier room video: \"{desc}\"\n"
 def scan_unknown(frames: VideoFrames, people: PeopleTimeline, rules: list[Rule], vlm: VLM,
                  already: set[str], threshold: float = 0.85, max_events: int = 6,
                  deadline: float | None = None) -> list[tuple[Candidate, float]]:
-    todo = [r for r in rules if r.id not in already]
+    # S7 must be able to confirm an S8 hit: rules without verify questions (door, brightness) and rules whose point is
+    # context a clip cannot show (s8: false, e.g. "not counted" in R16, the open-safe count of R22) are left out
+    todo = [r for r in rules if r.id not in already and r.verify and r.params.get("s8", True)]
     if not todo:
         return []
     best: dict[str, tuple[Candidate, float]] = {}

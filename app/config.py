@@ -21,6 +21,10 @@ class Settings:
     time_budget_s: float = 200.0         # soft budget for one video's analysis
     job_limit_s: float = 270.0           # hard limit counted from submission (jury allows 300 s)
     unknown_channel: bool = True         # S8 describe -> match
+    obj_detector: str = "off"            # "off" | "owlv2": object boxes on key frames (needs transformers + weights)
+    obj_model: str = "google/owlv2-base-patch16-ensemble"
+    obj_threshold: float = 0.13          # low on purpose: Qwen probes decide, boxes only point
+    obj_fps: float = 1.0                 # key-frame grid; people events and zone changes are added
     max_upload_mb: int = 300
 
 
@@ -47,5 +51,9 @@ def load_settings() -> Settings:
         time_budget_s=float(e.get("TIME_BUDGET_S", "200")),
         job_limit_s=float(e.get("JOB_LIMIT_S", "270")),
         unknown_channel=_flag(e.get("UNKNOWN_CHANNEL", "1")),
+        obj_detector=e.get("OBJ_DETECTOR", "off"),
+        obj_model=e.get("OBJ_MODEL", "google/owlv2-base-patch16-ensemble"),
+        obj_threshold=float(e.get("OBJ_THRESHOLD", "0.13")),
+        obj_fps=float(e.get("OBJ_FPS", "1")),
         max_upload_mb=int(e.get("MAX_UPLOAD_MB", "300")),
     )

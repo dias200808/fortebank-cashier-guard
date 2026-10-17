@@ -56,6 +56,11 @@ fi
 say "Веса детектора людей (torchvision Faster R-CNN R50-FPN-v2)"
 .venv/bin/python -c "import torchvision.models.detection as d; d.fasterrcnn_resnet50_fpn_v2(weights=d.FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)"
 
+say "Веса детектора предметов (OWLv2, Apache-2.0)"
+OWL_OK=1
+.venv/bin/python -c "import sys, transformers; from huggingface_hub import snapshot_download; assert transformers.is_torch_available(), 'torch < 2.5'; snapshot_download(sys.argv[1], allow_patterns=['*.json', '*.txt', 'model.safetensors'])" \
+  google/owlv2-base-patch16-ensemble || { OWL_OK=0; echo "OWLv2 недоступен (веса или torch < 2.5) — сервис будет работать без него"; }
+
 say "cloudflared (публичный HTTPS-адрес через туннель)"
 if [ ! -x deploy/bin/cloudflared ]; then
   ARCH=$(uname -m); case "$ARCH" in x86_64) CF=amd64;; aarch64|arm64) CF=arm64;; *) CF=amd64;; esac
@@ -64,8 +69,13 @@ if [ ! -x deploy/bin/cloudflared ]; then
 fi
 
 # Memory budget: FP8/4B/2B fit comfortably; bf16 8B on 24 GB needs a larger share.
-GPU_UTIL=0.80; MAX_LEN=16384
-case "$VLM_MODEL" in *8B-Instruct) GPU_UTIL=0.86; MAX_LEN=8192;; esac
+# FP8 8B on 24 GB: 0.72 (~17.3 GiB: ~10 GiB weights, ~5 GiB KV = 2+ requests of 16k tokens) leaves room for the
+# service (~4.5 GB) plus OWLv2 (~1-2 GB). Other models, or no OWLv2, keep their share (same as enable_owl.sh).
+GPU_UTIL=0.80; MAX_LEN=16384; OBJ=off
+case "$VLM_MODEL" in
+  *8B-Instruct) GPU_UTIL=0.86; MAX_LEN=8192;;
+  *8B-Instruct-FP8) if [ "$OWL_OK" = 1 ]; then GPU_UTIL=0.72; OBJ=owlv2; fi;;
+esac
 
 if [ -f "$ENV_FILE" ] && grep -q '^API_KEY=' "$ENV_FILE"; then
   API_KEY=$(grep '^API_KEY=' "$ENV_FILE" | cut -d= -f2-)
@@ -87,6 +97,7 @@ VLM_PORT=$VLM_PORT
 DETECTOR=frcnn_r50v2
 DEVICE=cuda
 VLM_WORKERS=16
+OBJ_DETECTOR=$OBJ
 EOF
 chmod 600 "$ENV_FILE"
 

@@ -37,9 +37,12 @@ def build_items(c: Candidate, rule: Rule, frames: VideoFrames, zones: Zones,
 
 
 def decide(rule: Rule, probs: list[float]) -> tuple[bool, float]:
+    """Majority vote; a question marked required: true is a veto (the context the rule rests on, e.g. the open safe
+    of R22, must hold whatever the other phrasings say)."""
     agree = [p if v.get("expect", "yes") == "yes" else 1.0 - p for v, p in zip(rule.verify, probs)]
     votes = sum(a > 0.5 for a in agree)
-    return votes * 2 > len(agree), sum(agree) / len(agree)
+    vetoed = any(v.get("required") and a <= 0.5 for v, a in zip(rule.verify, agree))
+    return votes * 2 > len(agree) and not vetoed, sum(agree) / len(agree)
 
 
 def verify_all(cands: list[Candidate], rules_by_id: dict[str, Rule], frames: VideoFrames, zones: Zones,

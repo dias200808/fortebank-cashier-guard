@@ -21,6 +21,8 @@ class Rule:
     template: str
     verify: list[dict] = field(default_factory=list)
     enabled: bool = True
+    summary: str = ""          # what the violation is, for the catalog on the website and in README
+    signals: str = ""          # which signals the rule combines, same audience
 
 
 @dataclass
@@ -44,13 +46,13 @@ class RuleContext:
     door: list[tuple[float, float]] = field(default_factory=list)  # door panel change vs first frame, -1 unknown
 
 
-def load_rules(path: Path) -> list[Rule]:
+def load_rules(path: Path, include_disabled: bool = False) -> list[Rule]:
     rules = []
     for d in yaml.safe_load(Path(path).read_text(encoding="utf-8")):
         fam = d.pop("family")
         d["families"] = fam if isinstance(fam, list) else [fam]
         rules.append(Rule(**d))
-    return [r for r in rules if r.enabled]
+    return [r for r in rules if r.enabled or include_disabled]
 
 
 STRONG_P = 0.8
@@ -97,6 +99,29 @@ def on_cashier_left(rule: Rule, ctx: RuleContext) -> list[Candidate]:
             if iv:
                 out.append(_post_cand(rule, ctx, f, ev.t, ev.t, ev.t + rule.params.get("post_s", 5.0)))
                 break
+    return out
+
+
+def appeared_while_away(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """Cash or a bag put on the desk after the cashier left, while she has not come back (a collector or a client leaves
+    it in the empty room). Intervals starting within tol of a departure belong to on_cashier_left (same tol), so the two
+    families never report the same item. A plain stand-up is no departure: cashier_left needs >= 2 s out of view or
+    leaving for good. An interval that runs to the end of a short clip counts from end_min_s. Somebody must have been in
+    the room to put it there: with nobody but the absent cashier the "new" item is probe noise on the empty desk left
+    after a proper departure (X-12/25/27/29)."""
+    p = rule.params
+    tol, min_s, end_min = p.get("tol", 1.5), p.get("min_s", 3.0), p.get("end_min_s", 2.0)
+    left = [e.t for e in ctx.people.events if e.kind == "cashier_left"]
+    out = []
+    for f in rule.facts:
+        for iv in ctx.states.get(f, []):
+            ev = max((t for t in left if t < iv.start - tol), default=None)
+            need = min_s if iv.end < ctx.duration - 1.0 else min(min_s, end_min)
+            if ev is None or iv.length < need:
+                continue
+            ts = [t for t in ctx.people.times if ev <= t <= iv.start + need]
+            if all(ctx.people.away_at(t) for t in ts) and any(ctx.people.others_at(t) > 0 for t in ts):
+                out.append(_post_cand(rule, ctx, f, iv.start, iv.start, iv.end))   # not back yet, a visitor was in
     return out
 
 
@@ -155,11 +180,13 @@ def duration(rule: Rule, ctx: RuleContext) -> list[Candidate]:
 
 def presence(rule: Rule, ctx: RuleContext) -> list[Candidate]:
     """An object visible from the first second may be furniture the model mistakes for it (teal boxes taken for cups
-    in X-25): then the start_needs fact (e.g. someone drinking) must be seen somewhere in the video."""
-    min_s, need = rule.params.get("min_s", 2.0), rule.params.get("start_needs")
+    in X-25): then the start_needs fact (e.g. someone drinking) must be seen somewhere in the video. need_visitor: the
+    state concerns a visitor (the screen shown to one), so S2 must see somebody besides the cashier during it."""
+    min_s, need, visitor = rule.params.get("min_s", 2.0), rule.params.get("start_needs"), rule.params.get("need_visitor")
     return [_post_cand(rule, ctx, f, iv.start, iv.start, iv.end)
             for f in rule.facts for iv in ctx.states.get(f, [])
-            if iv.length >= min_s and (not need or iv.start > 1.0 or ctx.states.get(need))]
+            if iv.length >= min_s and (not need or iv.start > 1.0 or ctx.states.get(need))
+            and (not visitor or any(ctx.people.others_at(t) > 0 for t in ctx.people.times if iv.start <= t <= iv.end))]
 
 
 def state_left_unattended(rule: Rule, ctx: RuleContext) -> list[Candidate]:
@@ -270,6 +297,97 @@ def return_after_count(rule: Rule, ctx: RuleContext) -> list[Candidate]:
     return [_post_cand(rule, ctx, "F_cash_to_client", t, t, t + 3.0) for t in sorted(hits)]
 
 
+def deposit_onto_leftover(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """X-4@68: the previous client's cash is still on the desk when the next client enters (the on_entry / R06
+    condition) and, before it is put away, the new client hands money across the desk. The latest handover in the
+    window is taken: an early one is usually the ID being shown. One candidate per entry, always checked by S7."""
+    p = rule.params
+    before, min_after = p.get("before_s", 1.5), p.get("min_after_s", 2.0)
+    within, tol = p.get("within_s", 60.0), p.get("tol", 1.5)
+    handovers = [h for n in ("F_cash_from_client", "F_handover") for h in ctx.states.get(n, [])]
+    out = []
+    for e in ctx.people.events:
+        if e.kind != "entered" or ctx.people.others_at(e.t - before) > 0:
+            continue                                   # previous visitor still here -> same operation
+        left = next((c for c in ctx.states.get("F_cash_desk", []) if c.start <= e.t - 0.5 and c.end >= e.t), None)
+        if left is None:
+            continue
+        hs = [h for h in handovers if e.t + min_after <= h.start <= min(left.end + tol, e.t + within)
+              and ctx.people.others_at(h.start) > 0]
+        if hs:
+            h = max(hs, key=lambda x: x.start)
+            t = round(min(h.end, left.end), 1)
+            out.append(_post_cand(rule, ctx, "F_cash_desk", t, t - 3.0, left.end + 0.5))
+    return out
+
+
+def desk_to_safe_without_count(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """X-13@47: banknotes lie on the desk only a few seconds, nobody counts them, and right after that the cashier is at
+    the safe. A long manual count (X-14: on the desk 46-54 and 104-114 s) fails the total-time limit; money that came
+    from a client across the desk is the п. 42 exception. People counts are not used on purpose: a reflection track on
+    X-13 (39.6-54.0 s) flickers others_at = 1 and would kill the labelled case. A withdrawal runs the other way (safe ->
+    desk -> back to the safe to close it -> count and pay out), so counting or a client cash flow within after_s of the
+    safe visit also silences the rule; F_counting misses hand counts (X-14), so banknotes held >= hands_min_s count too."""
+    p = rule.params
+    max_desk, max_total, look = p.get("max_desk_s", 6.0), p.get("max_total_s", 12.0), p.get("lookback_s", 60.0)
+    gap, client_s, lag = p.get("gap_s", 5.0), p.get("client_s", 30.0), p.get("lag_s", 1.0)
+    after, hands_min = p.get("after_s", 20.0), p.get("hands_min_s", 8.0)
+    cash, counts = ctx.states.get("F_cash_desk", []), ctx.states.get("F_counting", [])
+    hands = [x for x in ctx.states.get("F_cash_hands", []) if x.length >= hands_min]
+    clients = [x for n in ("F_cash_from_client", "F_cash_to_client", "F_handover") for x in ctx.states.get(n, [])]
+    out = []
+    for c in cash:
+        total = sum(x.length for x in cash if x.end >= c.start - look and x.start <= c.end)
+        if c.length > max_desk or total > max_total:
+            continue                                   # on the desk long enough for a manual count
+        s = next((x for x in ctx.states.get("F_safe_attended", []) if c.end - 1.0 <= x.start <= c.end + gap), None)
+        if (s is None or any(x.end >= c.start - look and x.start <= s.start + after for x in counts)
+                or any(x.end >= c.start - client_s and x.start <= s.start + after for x in hands + clients)):
+            continue                                   # no safe visit / counted / client operation (п. 42 exception)
+        t = round(s.start + lag, 1)
+        out.append(_post_cand(rule, ctx, "F_safe_attended", t, s.start, s.end))
+    return out
+
+
+def count_alone_open_safe(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """X-20: the cashier takes cash out of the safe, leaves the safe open, sits at the desk and counts the cash alone.
+    The same solo count after the safe was closed is labelled normal (X-21), so the safe must stand open and unattended
+    during the count: every candidate lies inside an R02 situation. Excluded: the п. 42 client exception (a client
+    cash flow or a handover within client_s), collection bags (X-14 opens and counts a bag alone, labelled normal), a
+    cashier away from the desk or untracked, and visitors in the room for more than max_busy of the count (a short
+    reflection blip is tolerated)."""
+    p = rule.params
+    min_s, client_s, max_busy = p.get("min_s", 2.0), p.get("client_s", 30.0), p.get("max_busy", 0.25)
+    if ctx.people.cashier_id is None:
+        return []
+    names = p.get("attend_fact", [])
+    att = [a for n in ([names] if isinstance(names, str) else names) for a in ctx.states.get(n, [])]
+    flows = [x for n in ("F_cash_from_client", "F_cash_to_client", "F_handover") for x in ctx.states.get(n, [])]
+    bags = ctx.states.get("F_bag_desk", [])
+    out = []
+    for f in p.get("count_facts", ["F_cash_hands", "F_counting"]):
+        for c in ctx.states.get(f, []):
+            safe = next((o for o in ctx.states.get("F_safe_open", [])
+                         if o.start < c.start and o.end >= c.start + min_s), None)   # opened before the count
+            ts = [t for t in ctx.people.times if c.start <= t <= c.end]
+            if (c.length < min_s or safe is None or not ts
+                    or any(x.end >= c.start - client_s and x.start <= c.end + client_s for x in flows)
+                    or any(x.end >= c.start - client_s and x.start <= c.end for x in bags)
+                    or sum(ctx.people.others_at(t) > 0 for t in ts) > max_busy * len(ts)):
+                continue
+            run: list[float] = []
+            for t in ts + [None]:
+                if (t is not None and t <= safe.end and not ctx.people.away_at(t)
+                        and not any(a.start <= t <= a.end for a in att)):
+                    run.append(t)                      # at the desk, safe open, nobody at the safe
+                    continue
+                if run and run[-1] - run[0] >= min_s:
+                    out.append(_post_cand(rule, ctx, f, round(run[0], 1), run[0], c.end))
+                    break
+                run = []
+    return out
+
+
 def door_left_open(rule: Rule, ctx: RuleContext) -> list[Candidate]:
     """The door panel stays unlike the first frame for min_s (someone opened it and nobody closed it). A brief
     opening for a passage returns to the reference and does not count; unknown samples neither extend nor break a run.
@@ -309,6 +427,10 @@ FAMILIES.update({
     "return_after_count": return_after_count,
     "door_left_open": door_left_open,
     "state_left_unattended": state_left_unattended,
+    "appeared_while_away": appeared_while_away,
+    "deposit_onto_leftover": deposit_onto_leftover,
+    "desk_to_safe_without_count": desk_to_safe_without_count,
+    "count_alone_open_safe": count_alone_open_safe,
 })
 
 

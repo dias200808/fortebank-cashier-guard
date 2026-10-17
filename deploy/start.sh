@@ -11,8 +11,12 @@ export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
 say() { printf '\n=== %s\n' "$*"; }
 alive() { [ -f "deploy/run/$1.pid" ] && kill -0 "$(cat "deploy/run/$1.pid")" 2>/dev/null; }
-wait_url() {  # url seconds label
-  for _ in $(seq 1 "$2"); do curl -sf "$1" >/dev/null 2>&1 && return 0; sleep 1; done
+wait_url() {  # url seconds label [pid name: give up as soon as that process has died]
+  for _ in $(seq 1 "$2"); do
+    curl -sf "$1" >/dev/null 2>&1 && return 0
+    if [ -n "${4:-}" ] && ! alive "$4"; then echo "Процесс $4 завершился: $3. Смотрите deploy/logs/$4.log"; return 1; fi
+    sleep 1
+  done
   echo "Не дождался: $3 ($1). Смотрите deploy/logs/"; return 1
 }
 
@@ -25,7 +29,7 @@ if alive vllm; then echo "vLLM уже запущен"; else
   echo $! > deploy/run/vllm.pid
   echo "Загрузка модели (первый раз до ~10 минут)…"
 fi
-wait_url http://127.0.0.1:${VLM_PORT:-18000}/v1/models 900 "vLLM"
+wait_url http://127.0.0.1:${VLM_PORT:-18000}/v1/models 900 "vLLM" vllm
 
 say "Проверка logprobs (нужны для вероятности «да»)"
 LP=$(curl -s "http://127.0.0.1:${VLM_PORT:-18000}/v1/chat/completions" -H 'Content-Type: application/json' -d "{\"model\": \"$VLM_MODEL\", \"max_tokens\": 1, \"temperature\": 0, \"logprobs\": true, \"top_logprobs\": 5, \"messages\": [{\"role\": \"user\", \"content\": \"Is the sky blue? Answer with exactly one word: Yes or No.\"}]}")
@@ -60,7 +64,7 @@ if alive app; then echo "Сервис уже запущен"; else
     > deploy/logs/app.log 2>&1 &
   echo $! > deploy/run/app.pid
 fi
-wait_url "http://127.0.0.1:$PORT/health" 180 "сервис"
+wait_url "http://127.0.0.1:$PORT/health" 180 "сервис" app
 
 say "Публичный адрес (Cloudflare quick tunnel)"
 if alive tunnel; then echo "Туннель уже запущен"; else

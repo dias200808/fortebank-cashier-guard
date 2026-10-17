@@ -5,7 +5,7 @@ from app.pipeline.people import Event, PeopleTimeline
 from app.pipeline.rules import RuleContext, evaluate, load_rules
 from app.pipeline.timeline import Interval
 
-RULES = {r.id: r for r in load_rules(Path("app/rules.yaml"))}
+RULES = {r.id: r for r in load_rules(Path("app/rules.yaml"), include_disabled=True)}
 
 
 def ctx(events, states, others=lambda t: 0, series=None, dur=30.0):

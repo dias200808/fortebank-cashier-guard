@@ -25,6 +25,14 @@ def test_decide_majority_with_expect_no():
     assert decide(rule, [0.9, 0.2, 0.9])[0] is False
 
 
+def test_required_question_is_a_veto():
+    rule = Rule("X", "t", [], [], {}, {}, "Н", "{t}",
+                verify=[{"q": "a"}, {"q": "b"}, {"q": "safe", "required": True}, {"q": "d", "expect": "no"}])
+    assert decide(rule, [0.9, 0.9, 0.9, 0.1])[0] is True
+    assert decide(rule, [0.9, 0.9, 0.2, 0.1])[0] is False          # 3 of 4 agree, but the required one does not
+    assert decide(rule, [0.9, 0.2, 0.9, 0.9])[0] is False          # required holds, no majority
+
+
 def test_verify_all_confirms_and_rejects():
     c = Candidate("R01", 9.0, 10.0, "F_cash_desk", 0.9)
     yes = verify_all([c], {"R01": RULE}, VF, Zones(desk=(0, 0.5, 1, 1)), FACTS, FakeVLM(answer=lambda i, q: 0.9))

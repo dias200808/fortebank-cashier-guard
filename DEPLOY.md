@@ -28,7 +28,7 @@ mkdir -p ~/app && tar -xzf fortebank-cashier-guard.tar.gz -C ~/app && cd ~/app
 bash deploy/setup.sh
 ```
 
-Ставит окружения, скачивает веса модели и детектора, cloudflared, создаёт `deploy/.env` с новым API-ключом.
+Ставит окружения, скачивает веса модели, детектора людей и детектора предметов OWLv2, cloudflared, создаёт `deploy/.env` с новым API-ключом. Для FP8-модели на 24 ГБ включает OWLv2 (`OBJ_DETECTOR=owlv2`, `VLM_GPU_UTIL=0.72`).
 
 ## 3. Запуск
 
@@ -58,6 +58,19 @@ bash deploy/update.sh /путь/к/fortebank-cashier-guard.tar.gz   # новая
 
 Логи: `deploy/logs/vllm.log`, `deploy/logs/app.log`, `deploy/logs/tunnel.log`.
 
+## 6. Детектор предметов OWLv2 на уже работающем сервере
+
+OWLv2 (Apache-2.0) показывает, где на кадре деньги, телефон, сейф, сумка, ключи, ноутбук, дверь, чашка: даёт рамку для кадра-доказательства и дополнительные моменты для вопросов Qwen. Нарушение сам не создаёт.
+
+```bash
+bash deploy/update.sh /путь/к/fortebank-cashier-guard.tar.gz   # код с OWLv2 (OWLv2 пока выключен)
+bash deploy/enable_owl.sh                                       # нужен интернет один раз
+```
+
+`enable_owl.sh` ставит `transformers`, скачивает веса (~600 МБ), проверяет их офлайн, пишет в `deploy/.env` `OBJ_DETECTOR=owlv2` и `VLM_GPU_UTIL=0.72`, перезапускает vLLM и сервис (1–3 минуты сервис не отвечает — делать до сдачи адреса жюри). **Туннель не трогает — адрес прежний.** В конце печатает размер KV-кеша vLLM, память GPU и замер OWLv2 на GPU (мс/кадр, пик памяти). Если с новыми настройками не запустилось — сам ставит `OBJ_DETECTOR=off` и прежний `VLM_GPU_UTIL` и запускает как было (повторный запуск скрипта безопасен).
+
+Выключить: `OBJ_DETECTOR=off` и `VLM_GPU_UTIL=0.80` в `deploy/.env`, затем `bash deploy/stop.sh keep-tunnel && bash deploy/start.sh`.
+
 ## Важно для сдачи
 
 - **Не перезапускайте туннель после того, как отдали адрес жюри** — quick tunnel при перезапуске выдаёт новый адрес. Сервис и модель можно перезапускать: `bash deploy/stop.sh keep-tunnel && bash deploy/start.sh`.
@@ -72,4 +85,5 @@ bash deploy/update.sh /путь/к/fortebank-cashier-guard.tar.gz   # новая
 | `vLLM` не стартует, в логе `out of memory` | меньшая модель: `VLM_MODEL=Qwen/Qwen3-VL-4B-Instruct bash deploy/setup.sh`, затем `start.sh` |
 | «ВНИМАНИЕ: logprobs нет» | работать будет, но вероятности станут 0/1; обновить vLLM: `.venv-vllm/bin/pip install -U vllm` |
 | Нет публичного адреса | посмотреть `deploy/logs/tunnel.log`; если у сервера есть открытый порт 8080 — можно отдать `http://IP:8080` |
+| после `enable_owl.sh` нехватка памяти GPU | `OWL_VLM_GPU_UTIL=0.70 bash deploy/enable_owl.sh` или выключить OWLv2 (раздел 6) |
 | Видео дольше 300 с | `deploy/logs/app.log`: строки с `t_probes`, `t_total`; уменьшить `MAX_PROBE_FRAMES=160` или `PROBE_FPS=0.5` в `deploy/.env` и перезапустить |

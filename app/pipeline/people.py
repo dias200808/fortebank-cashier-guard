@@ -90,7 +90,9 @@ def track_people(frames: VideoFrames, detector, fps: float, batch: int = 8) -> l
 
 
 H_REL = 0.5        # glass reflections are < half the cashier's height (probe 2026-10-17)
-AWAY_D = 0.05      # away = centre > 5 % of frame height from the seat
+AWAY_K = 0.24      # away = centre moved > 0.24 x the cashier's median box height from the seat: scale-invariant.
+                   # = old fixed 0.05 of frame height at the dataset's median cashier box (0.209, 40 videos);
+                   # same events on all 40 (±1 s), 0.95 % of away flags differ (scratchpad roles/calib2.py)
 AWAY_S = 0.6       # ... for at least 0.6 s
 CHAIN_GAP_S = 3.0  # away runs closer than this belong to one departure
 EDGE_S = 1.0       # tracks starting/ending within 1 s of the clip edge are not entries/exits
@@ -180,7 +182,9 @@ def _seat_linked(cashier: Track, tracks: list[Track], sx: float, sy: float, aspe
 
 
 def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, safe: Box | None,
-                   duration: float, aspect: float) -> PeopleTimeline:
+                   duration: float, aspect: float, cashier_hint: int | None = None) -> PeopleTimeline:
+    """cashier_hint: track id named by roles.identify_cashier; when it is one of `tracks` it replaces the
+    desk-time heuristic as the primary cashier track."""
     if not tracks or not times:
         return PeopleTimeline(times, None, [True] * len(times), [0] * len(times), [])
     near_desk = expand(desk, 1.4) if desk else None
@@ -189,7 +193,8 @@ def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, sa
         hits = sum(contains(near_desk, *center(b)) for b in tr.boxes) if near_desk else len(tr.boxes)
         return hits, len(tr.boxes)
 
-    primary = max(tracks, key=desk_score)
+    by_id = {tr.id: tr for tr in tracks}
+    primary = by_id[cashier_hint] if cashier_hint in by_id else max(tracks, key=desk_score)
     sx = st.median(center(b)[0] for b in primary.boxes)
     sy = st.median(center(b)[1] for b in primary.boxes)
     cashier, absorbed = _seat_linked(primary, tracks, sx, sy, aspect)
@@ -197,6 +202,7 @@ def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, sa
             and (tr.id == cashier.id or (tr.height() >= H_REL * cashier.height()
                                          and tr.end - tr.start >= MIN_VISIT_S))]
     near_safe = expand(safe, 1.5) if safe else None
+    away_d = AWAY_K * cashier.height()          # scale-invariant: same physical move on a near or far camera
 
     raw = []
     for t in times:
@@ -205,7 +211,7 @@ def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, sa
             raw.append(True)
             continue
         cx, cy = center(b)
-        far = ((cx - sx) * aspect) ** 2 + (cy - sy) ** 2 > AWAY_D ** 2
+        far = ((cx - sx) * aspect) ** 2 + (cy - sy) ** 2 > away_d ** 2
         raw.append(far and not (near_safe and contains(near_safe, cx, cy)))
     away = debounce(times, raw, AWAY_S)
     absent_runs = _runs(times, [cashier.box_at(t) is None for t in times])

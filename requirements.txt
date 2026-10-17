@@ -11,6 +11,7 @@ torch>=2.4
 torchvision>=0.19
 supervision==0.31.0
 trackers==2.6.1
+transformers==5.18.0      # OWLv2 object detector (OBJ_DETECTOR=owlv2); torch<2.5 -> transformers disables torch, no OWLv2
 httpx==0.28.1
 pyyaml==6.0.3
 pytest==9.1.1
