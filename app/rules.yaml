@@ -1,0 +1,206 @@
+# family: how the rule is triggered (see app/pipeline/rules.py FAMILIES)
+# strength: В — clause directly describes what is seen; С — needs context; Н — indirect, phrase as "возможное несоответствие"
+# verify: questions for S7; window = seconds relative to the candidate time; expect = yes|no; zone defaults to the fact's zone
+- id: R01
+  type: "Наличные или ценности оставлены без присмотра"
+  family: on_cashier_left
+  facts: [F_cash_desk, F_bag_desk]
+  params: {tol: 1.5, strong_k: 3}
+  strength: "В"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 20 ч. 2", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Все ранее принятые наличные деньги хранятся в специальных устройствах … закрывающихся на ключ"}
+  template: "В {t} с кассир покинул рабочее место; на столе остаются наличные или инкассаторская сумка (кадр {te} с). Наличные должны храниться в запирающемся устройстве на рабочем месте."
+  verify:
+    - {q: "Are banknotes or a cash bag lying on the desk?", window: [0, 5]}
+    - {q: "Is money left on the table surface?", window: [0, 5]}
+    - {q: "Is the cashier's chair empty while money remains on the desk?", window: [1, 6], zone: full}
+- id: R02
+  type: "Сейф оставлен открытым без присмотра"
+  family: [on_cashier_left, unattended_state]
+  facts: [F_safe_open]
+  params: {tol: 1.5, min_s: 3.0, strong_k: 3}
+  strength: "В"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 20 ч. 2, п. 80", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте кассового работника, закрывающихся на ключ; … определяется внутренними документами банка, обеспечивающими исключение их несанкционированного использования"}
+  template: "В {t} с дверца сейфа открыта, а кассира рядом нет (кадр {te} с)."
+  verify:
+    - {q: "Is the door of the safe open?", window: [0, 5]}
+    - {q: "Is the safe left open?", window: [0, 5]}
+    - {q: "Is nobody standing next to the open safe?", window: [0, 5], zone: full}
+- id: R03
+  type: "Ключ оставлен в замке сейфа"
+  family: on_cashier_left
+  facts: [F_key]
+  params: {tol: 2.0, strong_k: 3}
+  strength: "С"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 80", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Порядок хранения … ключей от специальных устройств, находящихся на рабочем месте кассового работника … определяется внутренними документами банка, обеспечивающими исключение их несанкционированного использования"}
+  template: "В {t} с кассир покинул рабочее место; в замке сейфа остаётся ключ (кадр {te} с)."
+  verify:
+    - {q: "Is a key inserted in the lock of the safe?", window: [0, 5]}
+    - {q: "Is there a key sticking out of the safe door?", window: [0, 5]}
+    - {q: "Is a key left in the safe while nobody is near it?", window: [1, 6], zone: full}
+- id: R04
+  type: "Рабочая станция не заблокирована при уходе"
+  family: on_cashier_left
+  facts: [F_screen_on]
+  params: {tol: 2.0, strong_k: 3}
+  strength: "Н"
+  norm: {act: "Требования к обеспечению информационной безопасности банков… (пост. Правления АРРФР от 03.04.2026 № 53)", point: "п. 53", url: "https://adilet.zan.kz/rus/docs/V2600038336",
+         quote: "определяются банком, организацией"}
+  template: "В {t} с кассир покинул рабочее место; экран ноутбука остаётся включённым с рабочим содержимым (кадр {te} с)."
+  verify:
+    - {q: "Is the laptop screen on and showing a document or a table?", window: [1, 6]}
+    - {q: "Is the computer unlocked with content visible on the screen?", window: [1, 6]}
+    - {q: "Is the screen bright with an open program?", window: [1, 6]}
+- id: R05
+  type: "Кассир покинул рабочее место до окончания обслуживания клиента"
+  family: cashier_left_with_client
+  facts: []
+  params: {client_stays_s: 2.0, served_s: 5.0}
+  strength: "В"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 22", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента"}
+  template: "В {t} с кассир покинул рабочее место, клиент при этом остаётся у стола."
+  verify:
+    - {q: "Is a visitor still at the desk while the cashier's seat is empty?", window: [1, 5], zone: full}
+    - {q: "Has the cashier walked away while a client is still present?", window: [0, 5], zone: full}
+    - {q: "Is a client waiting alone at the cash desk?", window: [1, 5], zone: full}
+- id: R06
+  type: "Наличные на виду при входе другого лица"
+  family: on_entry
+  facts: [F_cash_desk]
+  params: {before_s: 1.5, strong_k: 3}
+  strength: "В"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 20 ч. 2", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "На рабочем месте кассового работника находятся наличные деньги клиента"}
+  template: "В {t} с в помещение входит человек, а на столе открыто лежат наличные предыдущей операции (кадр {te} с)."
+  verify:
+    - {q: "Are banknotes lying openly on the desk?", window: [-2, 2]}
+    - {q: "Is cash visible on the table?", window: [-2, 2]}
+    - {q: "Is money left on the desk while a new person comes in?", window: [-1, 3], zone: full}
+- id: R08
+  type: "Дверь кассы оставлена открытой"
+  family: duration
+  facts: [F_door_open]
+  params: {min_s: 8.0, strong_k: 4}
+  strength: "Н"
+  norm: {act: "Правила организации охраны и устройства помещений БВУ… (пост. Правления НБРК от 24.02.2020 № 14)", point: "п. 16 пп. 1), п. 8", url: "https://adilet.zan.kz/rus/docs/V2000020075",
+         quote: "каждая касса имеет отдельный вход с закрывающейся на замок дверью"}
+  template: "С {t} с дверь в кассовое помещение остаётся открытой (кадр {te} с); назначение требования о закрывающейся двери не обеспечивается."
+  verify:
+    - {q: "Is the room door open?", window: [0, 8]}
+    - {q: "Is the entrance door left open?", window: [0, 8]}
+    - {q: "Can you see through an open doorway?", window: [0, 8]}
+- id: R09
+  type: "Постороннее лицо в кассовом помещении"
+  family: entry_during_service
+  facts: []
+  params: {min_stay_s: 1.0, served_s: 5.0}
+  strength: "Н"
+  norm: {act: "Правила организации охраны и устройства помещений БВУ… (пост. Правления НБРК от 24.02.2020 № 14)", point: "п. 8", url: "https://adilet.zan.kz/rus/docs/V2000020075",
+         quote: "Кассовый узел подлежит изолированию от других производственных, подсобных, подвальных и служебных помещений одним закрывающимся служебным входом"}
+  template: "В {t} с в помещение входит ещё один человек, пока идёт обслуживание другого посетителя."
+  verify:
+    - {q: "Are there two or more visitors (not the cashier) in the room at the same time?", window: [0, 4], zone: full}
+    - {q: "Did another person enter while a client was being served?", window: [-1, 3], zone: full}
+    - {q: "Is a second visitor standing in the room?", window: [0, 4], zone: full}
+- id: R10
+  type: "Личные вещи на рабочем месте кассира"
+  family: presence
+  facts: [F_items]
+  params: {min_s: 2.0, strong_k: 3}
+  strength: "В"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 12 ч. 1", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Хранение личных вещей … работников банка осуществляется вне кассового узла"}
+  template: "С {t} с на рабочем месте кассира находятся личные вещи (сумка, верхняя одежда) (кадр {te} с)."
+  verify:
+    - {q: "Is a handbag, backpack, coat or jacket lying on the desk?", window: [0, 4]}
+    - {q: "Are personal belongings placed on the work desk?", window: [0, 4]}
+    - {q: "Is there clothing or a bag on the table?", window: [0, 4]}
+- id: R11
+  type: "Мобильный телефон в кассовом помещении"
+  family: presence
+  facts: [F_phone]
+  params: {min_s: 2.0, strong_k: 3}
+  strength: "С"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 12 ч. 2", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Допускается внос … средств связи, не имеющих функции фото и видео фиксации"}
+  template: "С {t} с кассир пользуется мобильным телефоном (кадр {te} с); допускаются только средства связи без функции фото- и видеофиксации."
+  verify:
+    - {q: "Is the cashier holding a mobile phone?", window: [0, 4]}
+    - {q: "Is the cashier looking at a smartphone?", window: [0, 4]}
+    - {q: "Is there a phone in the cashier's hand?", window: [0, 4]}
+- id: R12
+  type: "Еда или напитки на рабочем месте"
+  family: presence
+  facts: [F_cup]
+  params: {min_s: 2.0, strong_k: 3}
+  strength: "Н"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 12 (перечень разрешённых к вносу предметов)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Допускается внос … лекарственных средств, медицинских изделий и средств связи …"}
+  template: "С {t} с на рабочем месте кассира находится напиток или еда (кадр {te} с); в перечне предметов, разрешённых к вносу в кассовый узел (п. 12 ч. 2), еда и напитки не названы."
+  verify:
+    - {q: "Is the cashier drinking or holding a cup or bottle?", window: [0, 4]}
+    - {q: "Is there a cup, mug or bottle on the desk?", window: [0, 4]}
+    - {q: "Is there a drink at the workplace?", window: [0, 4]}
+- id: R17
+  type: "Печати или журнал оставлены без присмотра"
+  family: on_cashier_left
+  facts: [F_docs_desk]
+  params: {tol: 1.5, strong_k: 3}
+  strength: "С"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 80", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Порядок хранения … печатей, … клише, именных штампов … определяется внутренними документами банка, обеспечивающими исключение их несанкционированного использования"}
+  template: "В {t} с кассир покинул рабочее место; на столе остаются печати, штампы или журнал (кадр {te} с)."
+  verify:
+    - {q: "Is a stamp, seal or journal left on the desk?", window: [0, 5]}
+    - {q: "Are stamps or a logbook lying on the table?", window: [0, 5]}
+    - {q: "Is a stamp left unattended on the desk?", window: [1, 6]}
+- id: R18
+  type: "Обзор камеры нарушен"
+  family: quality
+  facts: []
+  params: {min_s: 2.0, dark: 25.0, flat: 10.0}
+  strength: "Н"
+  norm: {act: "Правила организации охраны и устройства помещений БВУ… (пост. Правления НБРК от 24.02.2020 № 14)", point: "п. 16 пп. 6)", url: "https://adilet.zan.kz/rus/docs/V2000020075",
+         quote: "касса оборудуется видеокамерами"}
+  template: "С {t} с изображение с камеры тёмное или перекрыто — контроль операций по видео невозможен."
+  verify: []
+- id: R13
+  type: "Пересчёт наличных не в присутствии клиента"
+  family: count_after_client_left
+  facts: [F_counting]
+  params: {after_s: 1.0, strong_k: 99}
+  strength: "В"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 20 ч. 1; п. 31 пп. 4)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "Наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента"}
+  template: "В {t} с клиент покинул помещение, после чего кассир пересчитывает наличные (кадр {te} с)."
+  verify:
+    - {q: "Is the cashier counting money?", window: [0, 4]}
+    - {q: "Is the cashier using the banknote counting machine?", window: [0, 4]}
+    - {q: "Is the client absent while money is being counted?", window: [0, 4], zone: full}
+- id: R14
+  type: "Документ клиента на видео не зафиксирован"
+  family: handover_without_id
+  facts: [F_handover]
+  params: {lookback_s: 60.0, strong_k: 99}
+  strength: "С"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 19 пп. 1)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "проводит визуальную идентификацию клиента, вносящего наличные деньги, с документом, удостоверяющим его личность"}
+  template: "В {t} с клиент передаёт наличные; предъявление документа, удостоверяющего личность, на видео не зафиксировано."
+  verify:
+    - {q: "Is a client handing money to the cashier across the desk?", window: [-1, 2], zone: full}
+    - {q: "Is an ID card or identity document visible on the desk or in someone's hand?", window: [-20, 2], zone: full, expect: "no"}
+- id: R15
+  type: "Сумка инкассации принята без видимой проверки"
+  family: collector_quick_leave
+  facts: [F_bag_desk]
+  params: {max_stay_s: 10.0, strong_k: 99}
+  strength: "С"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 24 пп. 3)–4)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "проверяет целостность сумки; проверяет правильность пломбирования сумки"}
+  template: "В {t} с инкассатор оставляет сумку и уходит в течение нескольких секунд; проверка целостности сумки и пломбы при нём на видео не зафиксирована."
+  verify:
+    - {q: "Did a person put a bag on the desk and walk away?", window: [-2, 3], zone: full}
+    - {q: "Is the cashier inspecting the bag's seal or exchanging papers with the visitor?", window: [-2, 3], zone: full, expect: "no"}

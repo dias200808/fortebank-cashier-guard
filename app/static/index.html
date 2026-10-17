@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Проверка кассовой дисциплины</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#5b6475; --ok:#1a7f37; --bad:#c62828; --line:#dde1e8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --card:#1d222a; --text:#e8ebf0; --muted:#9aa3b2; --line:#2c333d; } }
+  body { margin:0; font:16px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:960px; margin:0 auto; padding:24px 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:12px 0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=text] { flex:1; min-width:180px; padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; }
+  button { padding:8px 16px; border:0; border-radius:6px; background:#2457d6; color:#fff; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .verdict { font-size:22px; font-weight:700; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .frames { display:flex; gap:8px; overflow-x:auto; }
+  .frames figure { margin:0; } .frames img { height:240px; border-radius:6px; display:block; }
+  .frames figcaption, .muted { color:var(--muted); font-size:14px; }
+  progress { width:100%; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Проверка видео кассира</h1>
+  <p class="muted">Результат — подсказка для проверяющего, а не юридическое заключение.</p>
+  <div class="card">
+    <div class="row"><label for="key">API-ключ</label><input id="key" type="text" autocomplete="off"></div>
+    <div class="row" style="margin-top:8px"><input id="file" type="file" accept=".mov,video/*"><button id="go">Проверить</button></div>
+    <progress id="up" value="0" max="100" hidden></progress>
+    <p id="status" class="muted"></p>
+  </div>
+  <div id="result"></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+try { $("key").value = params.get("key") || localStorage.getItem("apiKey") || ""; } catch (e) {}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+$("go").onclick = () => {
+  const key = $("key").value.trim(), f = $("file").files[0];
+  if (!key || !f) { $("status").textContent = "Укажите ключ и выберите файл."; return; }
+  try { localStorage.setItem("apiKey", key); } catch (e) {}
+  const fd = new FormData(); fd.append("file", f);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/v1/analyze"); xhr.setRequestHeader("X-API-Key", key);
+  $("up").hidden = false; $("go").disabled = true; $("result").innerHTML = "";
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("up").value = 100 * e.loaded / e.total; };
+  xhr.onload = () => {
+    $("up").hidden = true;
+    if (xhr.status !== 200) { $("status").textContent = "Ошибка загрузки: " + xhr.status + " " + xhr.responseText; $("go").disabled = false; return; }
+    let jobId = null;
+    try { jobId = JSON.parse(xhr.responseText).job_id; } catch (e) {}
+    if (!jobId) { $("status").textContent = "Ошибка: некорректный ответ сервера"; $("go").disabled = false; return; }
+    poll(jobId, key, Date.now(), 0);
+  };
+  xhr.onerror = () => { $("status").textContent = "Сеть недоступна"; $("go").disabled = false; };
+  xhr.onabort = () => { $("up").hidden = true; $("status").textContent = "Загрузка прервана"; $("go").disabled = false; };
+  xhr.ontimeout = () => { $("up").hidden = true; $("status").textContent = "Превышено время ожидания загрузки"; $("go").disabled = false; };
+  xhr.send(fd);
+};
+
+async function poll(id, key, t0, retries) {
+  let r, d;
+  try {
+    r = await fetch("/api/v1/jobs/" + id, { headers: { "X-API-Key": key } });
+    d = await r.json();
+  } catch (e) {
+    if (retries < 5) {
+      $("status").textContent = "Нет связи, повтор… (задача " + id + ")";
+      setTimeout(() => poll(id, key, t0, retries + 1), 3000); return;
+    }
+    $("status").textContent = "Нет связи с сервером. Задача " + id + ": проверьте позже.";
+    $("go").disabled = false; return;
+  }
+  if (!r.ok) {
+    $("go").disabled = false;
+    $("status").textContent = "Ошибка: " + r.status + " " + (typeof d.detail === "string" ? d.detail : "") + " (задача " + id + ")";
+    return;
+  }
+  if (d.status === "processing") {
+    $("status").textContent = "Идёт анализ… " + Math.round((Date.now() - t0) / 1000) + " с";
+    setTimeout(() => poll(id, key, t0, 0), 2000); return;
+  }
+  $("go").disabled = false;
+  if (d.status === "failed") { $("status").textContent = "Не удалось обработать: " + (d.error || ""); return; }
+  $("status").textContent = "Готово за " + Math.round((Date.now() - t0) / 1000) + " с";
+  render(d);
+}
+
+function render(d) {
+  if (d.verdict !== "violation" && d.verdict !== "no_violation") {
+    $("status").textContent = "Ошибка: неизвестный результат анализа (задача " + d.job_id + ")";
+    $("result").innerHTML = ""; return;
+  }
+  const bad = d.verdict === "violation";
+  let html = `<div class="card"><div class="verdict ${bad ? "bad" : "ok"}">${bad ? "Обнаружены признаки возможных нарушений" : "Нарушение не обнаружено"}</div></div>`;
+  for (const v of d.violations || []) {
+    const rule = v.rule ? `<p><b>Норматив:</b> ${v.rule.url ? `<a href="${esc(v.rule.url)}" target="_blank" rel="noopener">${esc(v.rule.act)}</a>` : esc(v.rule.act)}, ${esc(v.rule.point)}</p>` : "";
+    const frames = v.evidence_frames.map((f) => `<figure><img alt="кадр ${f.timestamp_sec} с" src="data:image/jpeg;base64,${f.image_base64}"><figcaption>${f.timestamp_sec.toFixed(1)} с</figcaption></figure>`).join("");
+    html += `<div class="card"><h3>${esc(v.type)} — ${v.timecode_sec.toFixed(1)} с</h3><p>${esc(v.description)}</p>${rule}<div class="frames">${frames}</div></div>`;
+  }
+  $("result").innerHTML = html;
+}
+</script>
+</body>
+</html>

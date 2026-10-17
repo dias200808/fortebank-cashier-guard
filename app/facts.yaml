@@ -1,0 +1,39 @@
+- id: F_cash_desk
+  zone: desk
+  question: "Are there banknotes (paper money) lying on the desk?"
+- id: F_bag_desk
+  zone: desk
+  question: "Is there a cash collection bag or sack lying on the desk?"
+- id: F_docs_desk
+  zone: desk
+  question: "Is there a journal, logbook, stamp or seal lying on the desk?"
+- id: F_handover
+  zone: desk
+  question: "Is money or a document being passed from one person's hand to another person's hand?"
+- id: F_cup
+  zone: full
+  question: "Is there a cup, mug, glass or bottle on the desk or in a person's hand?"
+- id: F_items
+  zone: full
+  question: "Is there a handbag, backpack, coat or jacket lying on the desk?"
+- id: F_phone
+  zone: full
+  question: "Is the cashier holding or looking at a mobile phone?"
+- id: F_safe_open
+  zone: safe
+  question: "Is the door of the safe open?"
+- id: F_key
+  zone: safe
+  question: "Is there a key inserted in the lock of the safe?"
+- id: F_door_open
+  zone: door
+  question: "Is the entrance door of the room open?"
+- id: F_screen_on
+  zone: laptop
+  question: "Is the laptop screen turned on and showing a document, table or program (not a lock screen or a black screen)?"
+- id: F_counting
+  zone: desk
+  question: "Is the cashier counting banknotes by hand or feeding them into the banknote counting machine?"
+- id: F_id_card
+  zone: desk
+  question: "Is an ID card or identity document being shown or lying on the desk?"

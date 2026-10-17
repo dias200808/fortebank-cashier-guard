@@ -1,0 +1,15 @@
+# organizer data — must not be published (FAQ 6)
+open/
+*.docx
+
+# local environment and run artefacts
+.venv/
+jobs/
+eval_out/
+__pycache__/
+.pytest_cache/
+.DS_Store
+
+# tooling
+.gstack/
+.superpowers/
