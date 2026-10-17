@@ -114,3 +114,19 @@ def test_missing_logprobs_falls_back_and_warns_once(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger="app.pipeline.vlm"):
         assert vlm.yes_prob([IMG], "Q") == 1.0 and vlm.yes_prob([IMG], "Q") == 1.0
     assert len([r for r in caplog.records if "logprobs" in r.getMessage()]) == 1
+
+
+def test_qwen35_turns_thinking_off_and_qwen3vl_sends_nothing_extra():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Yes"}, "logprobs": {"content": [
+            {"token": "Yes", "logprob": -0.1, "top_logprobs": [{"token": "Yes", "logprob": -0.1}, {"token": "No", "logprob": -2.4}]}]}}]})
+
+    for model in ("Qwen/Qwen3.5-9B", "RedHatAI/Qwen3.5-9B-FP8-dynamic", "Qwen/Qwen3-VL-8B-Instruct-FP8"):
+        vlm = OpenAIVLM("http://x/v1", model, workers=1, client=httpx.Client(transport=httpx.MockTransport(handler)))
+        assert vlm.yes_probs([([np.zeros((8, 8, 3), np.uint8)], "q?")])[0] > 0.8
+    assert seen[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert seen[1]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in seen[2]

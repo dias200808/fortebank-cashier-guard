@@ -63,6 +63,8 @@ class OpenAIVLM:
                  retries: int = 2, backoff: float = 0.5, client: httpx.Client | None = None):
         self.base_url, self.model = base_url.rstrip("/"), model
         self.workers, self.retries, self.backoff = workers, retries, backoff
+        # Qwen3.5 thinks before answering by default; our P(yes) reads the FIRST answer token, so thinking must be off
+        self.chat_kwargs = {"enable_thinking": False} if "qwen3.5" in model.lower() else None
         self.client = client or httpx.Client(timeout=httpx.Timeout(timeout, connect=5.0))
 
     def _chat(self, images: list[np.ndarray], text: str, max_tokens: int, logprobs: bool) -> dict:
@@ -70,6 +72,8 @@ class OpenAIVLM:
         content.append({"type": "text", "text": text})
         payload = {"model": self.model, "messages": [{"role": "user", "content": content}],
                    "max_tokens": max_tokens, "temperature": 0.0}
+        if self.chat_kwargs:
+            payload["chat_template_kwargs"] = self.chat_kwargs
         if logprobs:
             payload.update(logprobs=True, top_logprobs=10)
         last: str = ""

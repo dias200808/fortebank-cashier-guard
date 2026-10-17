@@ -24,7 +24,7 @@ say "Модель: $VLM_MODEL"
 if alive vllm; then echo "vLLM уже запущен"; else
   nohup .venv-vllm/bin/vllm serve "$VLM_MODEL" --host 127.0.0.1 --port "${VLM_PORT:-18000}" \
     --max-model-len "$VLM_MAX_LEN" --gpu-memory-utilization "$VLM_GPU_UTIL" \
-    --limit-mm-per-prompt '{"image": 10}' --max-num-seqs 16 \
+    --limit-mm-per-prompt '{"image": 10}' --max-num-seqs 16 ${VLM_EXTRA_ARGS:-} \
     > deploy/logs/vllm.log 2>&1 &
   echo $! > deploy/run/vllm.pid
   echo "Загрузка модели (первый раз до ~10 минут)…"
