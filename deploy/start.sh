@@ -18,21 +18,21 @@ wait_url() {  # url seconds label
 
 say "Модель: $VLM_MODEL"
 if alive vllm; then echo "vLLM уже запущен"; else
-  nohup .venv-vllm/bin/vllm serve "$VLM_MODEL" --host 127.0.0.1 --port 8000 \
+  nohup .venv-vllm/bin/vllm serve "$VLM_MODEL" --host 127.0.0.1 --port "${VLM_PORT:-18000}" \
     --max-model-len "$VLM_MAX_LEN" --gpu-memory-utilization "$VLM_GPU_UTIL" \
     --limit-mm-per-prompt '{"image": 10}' --max-num-seqs 16 \
     > deploy/logs/vllm.log 2>&1 &
   echo $! > deploy/run/vllm.pid
   echo "Загрузка модели (первый раз до ~10 минут)…"
 fi
-wait_url http://127.0.0.1:8000/v1/models 900 "vLLM"
+wait_url http://127.0.0.1:${VLM_PORT:-18000}/v1/models 900 "vLLM"
 
 say "Проверка logprobs (нужны для вероятности «да»)"
-LP=$(curl -s http://127.0.0.1:8000/v1/chat/completions -H 'Content-Type: application/json' -d "{\"model\": \"$VLM_MODEL\", \"max_tokens\": 1, \"temperature\": 0, \"logprobs\": true, \"top_logprobs\": 5, \"messages\": [{\"role\": \"user\", \"content\": \"Is the sky blue? Answer with exactly one word: Yes or No.\"}]}")
+LP=$(curl -s "http://127.0.0.1:${VLM_PORT:-18000}/v1/chat/completions" -H 'Content-Type: application/json' -d "{\"model\": \"$VLM_MODEL\", \"max_tokens\": 1, \"temperature\": 0, \"logprobs\": true, \"top_logprobs\": 5, \"messages\": [{\"role\": \"user\", \"content\": \"Is the sky blue? Answer with exactly one word: Yes or No.\"}]}")
 if echo "$LP" | grep -q top_logprobs; then echo "OK"; else echo "ВНИМАНИЕ: logprobs нет в ответе: $LP"; fi
 
 say "Формат координат модели (rel1000 или abs)"
-MODE=$(.venv/bin/python - "$VLM_MODEL" <<'PY' 2>/dev/null || echo rel1000
+MODE=$(.venv/bin/python - "$VLM_MODEL" "http://127.0.0.1:${VLM_PORT:-18000}/v1" <<'PY' 2>/dev/null || echo rel1000
 import sys
 import numpy as np
 from app.pipeline.scene import parse_bbox
@@ -40,7 +40,7 @@ from app.pipeline.vlm import OpenAIVLM
 img = np.full((848, 464, 3), 200, np.uint8)
 img[424:636, 232:406] = (220, 30, 30)
 truth = (0.5, 0.5, 0.875, 0.75)
-text = OpenAIVLM("http://127.0.0.1:8000/v1", sys.argv[1]).text(
+text = OpenAIVLM(sys.argv[2], sys.argv[1]).text(
     [img], 'Locate the red rectangle. Reply with JSON only, like {"bbox_2d": [x1, y1, x2, y2]}.', 64)
 def iou(a, b):
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0])); iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
@@ -56,7 +56,7 @@ export VLM_COORD_MODE="$MODE"
 
 say "Сервис (порт $PORT)"
 if alive app; then echo "Сервис уже запущен"; else
-  VLM_URL=http://127.0.0.1:8000/v1 nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers 1 \
+  VLM_URL="http://127.0.0.1:${VLM_PORT:-18000}/v1" nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers 1 \
     > deploy/logs/app.log 2>&1 &
   echo $! > deploy/run/app.pid
 fi

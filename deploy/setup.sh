@@ -72,13 +72,18 @@ if [ -f "$ENV_FILE" ] && grep -q '^API_KEY=' "$ENV_FILE"; then
 else
   API_KEY=$(.venv/bin/python -c "import secrets; print(secrets.token_hex(24))")
 fi
+# Vast.ai/RunPod images often run Jupyter on 8080 inside the container: pick a free port.
+port_free() { .venv/bin/python -c "import socket,sys; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('0.0.0.0', int(sys.argv[1])))" "$1" 2>/dev/null; }
+APP_PORT=8080; port_free 8080 || APP_PORT=18080
+VLM_PORT=18000; port_free 18000 || VLM_PORT=18001
 cat > "$ENV_FILE" <<EOF
 VLM_MODEL=$VLM_MODEL
 VLM_GPU_UTIL=$GPU_UTIL
 VLM_MAX_LEN=$MAX_LEN
 VLM_COORD_MODE=rel1000
 API_KEY=$API_KEY
-PORT=8080
+PORT=$APP_PORT
+VLM_PORT=$VLM_PORT
 DETECTOR=frcnn_r50v2
 DEVICE=cuda
 VLM_WORKERS=16
