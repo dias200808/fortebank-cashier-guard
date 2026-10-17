@@ -2,7 +2,7 @@ import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.config import Settings
@@ -23,8 +23,12 @@ def create_app(settings: Settings, process: ProcessFn) -> FastAPI:
 
     app = FastAPI(title="Cash discipline video checker", lifespan=lifespan)
 
-    def check_key(key: str | None) -> None:
-        if not key or not hmac.compare_digest(key.encode(), settings.api_key.encode()):
+    def key_ok(key: str | None) -> bool:
+        return bool(key) and hmac.compare_digest(key.encode(), settings.api_key.encode())
+
+    def check_key(*keys: str | None) -> None:
+        """401 unless one of the supplied credentials is the API key (constant-time compare)."""
+        if not any([key_ok(k) for k in keys]):  # list: compare every candidate, no short-circuit
             raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
 
     @app.post("/api/v1/analyze")
@@ -54,6 +58,17 @@ def create_app(settings: Settings, process: ProcessFn) -> FastAPI:
         if r is None:
             raise HTTPException(404, "job not found")
         return JSONResponse(r.to_api())
+
+    @app.get("/api/v1/jobs/{job_id}/video")
+    def get_job_video(job_id: str, key: str | None = Query(default=None),
+                      x_api_key: str | None = Header(default=None)):
+        """The uploaded video, with Range support so a <video> can seek. A <video src> cannot send
+        headers, so the key may also come as ?key=."""
+        check_key(x_api_key, key)
+        path = store.video_path(job_id)
+        if store.load(job_id) is None or not path.is_file():
+            raise HTTPException(404, "job not found")
+        return FileResponse(path, media_type="video/quicktime")  # Starlette serves Range -> 206
 
     @app.get("/health")
     def health():

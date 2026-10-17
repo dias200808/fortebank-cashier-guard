@@ -69,3 +69,70 @@ def test_index_has_verdict_strings_and_key_header(tmp_path):
         assert "Нарушение не обнаружено" in body
         assert "Обнаружены признаки возможных нарушений" in body
         assert "X-API-Key" in body
+
+
+VIDEO = bytes(range(256)) * 4  # 1024 bytes of distinct-ish content
+
+
+def upload(c, data=VIDEO):
+    r = c.post("/api/v1/analyze", files={"file": ("a.mov", data)}, headers=KEY)
+    assert r.status_code == 200
+    return r.json()["job_id"]
+
+
+def test_video_requires_key(tmp_path):
+    with make_client(tmp_path) as c:
+        jid = upload(c)
+        assert c.get(f"/api/v1/jobs/{jid}/video").status_code == 401
+        assert c.get(f"/api/v1/jobs/{jid}/video", params={"key": "bad"}).status_code == 401
+        assert c.get(f"/api/v1/jobs/{jid}/video", headers={"X-API-Key": "bad"}).status_code == 401
+
+
+def test_video_with_header_key(tmp_path):
+    with make_client(tmp_path) as c:
+        jid = upload(c)
+        r = c.get(f"/api/v1/jobs/{jid}/video", headers=KEY)
+        assert r.status_code == 200
+        assert r.content == VIDEO
+        assert r.headers["content-type"].startswith("video/quicktime")
+        assert r.headers["accept-ranges"] == "bytes"
+
+
+def test_video_with_query_key(tmp_path):
+    with make_client(tmp_path) as c:
+        jid = upload(c)
+        r = c.get(f"/api/v1/jobs/{jid}/video", params={"key": "k"})
+        assert r.status_code == 200 and r.content == VIDEO
+
+
+def test_video_range_returns_partial_content(tmp_path):
+    with make_client(tmp_path) as c:
+        jid = upload(c)
+        r = c.get(f"/api/v1/jobs/{jid}/video", headers={**KEY, "Range": "bytes=0-99"})
+        assert r.status_code == 206
+        assert r.headers["content-range"] == f"bytes 0-99/{len(VIDEO)}"
+        assert r.headers["content-length"] == "100"
+        assert r.content == VIDEO[:100]
+
+
+def test_video_range_with_query_key(tmp_path):
+    with make_client(tmp_path) as c:
+        jid = upload(c)
+        r = c.get(f"/api/v1/jobs/{jid}/video", params={"key": "k"}, headers={"Range": "bytes=1000-"})
+        assert r.status_code == 206
+        assert r.headers["content-range"] == f"bytes 1000-1023/{len(VIDEO)}"
+        assert r.content == VIDEO[1000:]
+
+
+def test_video_unknown_job(tmp_path):
+    with make_client(tmp_path) as c:
+        assert c.get("/api/v1/jobs/deadbeef0000/video", headers=KEY).status_code == 404
+        assert c.get("/api/v1/jobs/deadbeef0000/video", params={"key": "k"}).status_code == 404
+        assert c.get("/api/v1/jobs/deadbeef0000/video").status_code == 401
+        assert c.get("/api/v1/jobs/..%2Fetc/video", headers=KEY).status_code == 404
+
+
+def test_job_endpoint_still_header_only(tmp_path):
+    with make_client(tmp_path) as c:
+        jid = upload(c)
+        assert c.get(f"/api/v1/jobs/{jid}", params={"key": "k"}).status_code == 401

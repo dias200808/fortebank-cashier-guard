@@ -1,109 +1,964 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Проверка кассовой дисциплины</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Контроль кассовой дисциплины</title>
+<link rel="icon" href="data:,">
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#5b6475; --ok:#1a7f37; --bad:#c62828; --line:#dde1e8; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --card:#1d222a; --text:#e8ebf0; --muted:#9aa3b2; --line:#2c333d; } }
-  body { margin:0; font:16px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
-  main { max-width:960px; margin:0 auto; padding:24px 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:12px 0; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  input[type=text] { flex:1; min-width:180px; padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; }
-  button { padding:8px 16px; border:0; border-radius:6px; background:#2457d6; color:#fff; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  .verdict { font-size:22px; font-weight:700; }
-  .ok { color:var(--ok); } .bad { color:var(--bad); }
-  .frames { display:flex; gap:8px; overflow-x:auto; }
-  .frames figure { margin:0; } .frames img { height:240px; border-radius:6px; display:block; }
-  .frames figcaption, .muted { color:var(--muted); font-size:14px; }
-  progress { width:100%; }
+  :root {
+    color-scheme: light;
+    --paper: #ffffff;
+    --ink: #000000;
+    --ink-2: #4d4d4d;
+    --ink-3: #6e6e6e;
+    --rule: #e3e3e3;
+    --line: #858585; /* control borders: >=3:1 on paper and wash (WCAG 1.4.11) */
+    --wash: #f4f4f4;
+    --ink-hover: #2e2e2e;
+    --backdrop: rgba(0, 0, 0, .72);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    /* portrait CCTV (464x848): player column width follows viewport height */
+    --pw: clamp(240px, calc((100vh - 230px) * .5472), 400px);
+    --pw-m: calc(60vh * .5472);
+    --vsize: clamp(26px, 1.6vw + 16px, 36px);
+  }
+  @supports (height: 100svh) {
+    :root { --pw: clamp(240px, calc((100svh - 230px) * .5472), 400px); --pw-m: calc(60svh * .5472); }
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --paper: #161616;
+      --ink: #ffffff;
+      --ink-2: #bdbdbd;
+      --ink-3: #959595;
+      --rule: #2f2f2f;
+      --line: #747474;
+      --wash: #232323;
+      --ink-hover: #dcdcdc;
+      --backdrop: rgba(0, 0, 0, .82);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.5 var(--font); overflow-x: hidden; }
+  ::selection { background: var(--ink); color: var(--paper); }
+  a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, p { margin: 0; }
+  .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 820px) { .wrap { padding: 0 40px; } }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* header */
+  .top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px 40px; padding-top: 28px; padding-bottom: 28px; }
+  .brand h1 { font-size: 19px; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; }
+  .brand p { margin-top: 4px; max-width: 62ch; color: var(--ink-2); font-size: 15px; }
+  @media (max-width: 819px) {
+    .top { padding-top: 20px; padding-bottom: 20px; }
+    body.working .brand p { display: none; }
+  }
+  .keybox { font-size: 14px; color: var(--ink-2); min-width: 0; }
+  .keyview { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+  .keyview .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink); flex: none; }
+  .keyform { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .keyform label { color: var(--ink); font-weight: 600; }
+  .keyform input { width: 190px; max-width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; }
+  .keyform input:focus-visible { outline-offset: 1px; border-color: var(--ink); }
+  .keyhint { margin-top: 6px; color: var(--ink); font-weight: 600; }
+
+  /* controls */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; line-height: 20px; cursor: pointer; text-align: center; }
+  .btn:hover { border-color: var(--ink); }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .btn.primary:hover { background: var(--ink-hover); border-color: var(--ink-hover); }
+  .btn.sm { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; }
+  .link:hover { text-decoration-thickness: 2px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .hint { color: var(--ink-3); font-size: 14px; }
+
+  /* intake */
+  .intake { padding-bottom: 64px; }
+  .drop-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: min(56vh, 440px); padding: 40px 24px; border: 1.5px dashed var(--line); border-radius: 16px; background: var(--paper); color: var(--ink); font: inherit; text-align: center; cursor: pointer; }
+  .drop-btn:hover, .drop.over .drop-btn { border-style: solid; border-color: var(--ink); background: var(--wash); }
+  .drop-btn:focus-visible { outline-offset: 4px; border-radius: 16px; }
+  .drop-btn svg { margin-bottom: 8px; }
+  .drop-title { font-size: clamp(21px, 1.2vw + 16px, 28px); line-height: 1.2; font-weight: 650; letter-spacing: -.015em; }
+  .drop-sub { color: var(--ink-2); }
+  .drop-sub u { text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  .drop-note { color: var(--ink-3); font-size: 14px; }
+  .intake-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; margin-top: 16px; }
+
+  /* alert (neutral, monochrome) */
+  .alert { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1.5px solid var(--ink); border-radius: 10px; }
+  .alert-ico { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 14px; font-weight: 700; line-height: 22px; text-align: center; }
+  .alert-title { font-weight: 650; }
+  .alert-text { margin-top: 2px; color: var(--ink-2); overflow-wrap: anywhere; }
+  .alert-meta { margin-top: 6px; color: var(--ink-3); font-size: 13px; }
+  .intake .alert { margin-top: 16px; }
+  .tech { margin-top: 10px; font-size: 13px; }
+  .tech summary { display: inline-block; padding: 4px 0; color: var(--ink-2); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .tech pre { margin: 6px 0 0; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--wash); color: var(--ink-2); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+
+  /* workspace */
+  .work { display: grid; gap: 28px; padding-bottom: 72px; }
+  .player { width: min(100%, var(--pw-m)); min-width: 220px; margin: 0 auto; }
+  .work.wide .player { width: 100%; max-width: 760px; }
+  .panel { min-width: 0; }
+  @media (min-width: 820px) {
+    .work { grid-template-columns: var(--pw) minmax(0, 1fr); gap: 56px; align-items: start; }
+    .player { width: 100%; margin: 0; position: sticky; top: 24px; }
+    .work.wide, .work.noplayer { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+    .work.wide .player { position: static; }
+    .panel { max-width: 720px; padding-top: 4px; }
+  }
+  video { display: block; width: 100%; height: auto; aspect-ratio: auto 464 / 848; background: #000; border-radius: 10px; }
+  .work.wide video { aspect-ratio: auto 16 / 9; }
+
+  /* timeline with violation markers */
+  .tl { position: relative; height: 22px; margin-top: 4px; touch-action: manipulation; }
+  .tl.has { height: 48px; margin-top: 8px; }
+  .tl.has.two { height: 74px; }
+  .tl.seekable { cursor: pointer; }
+  .tl-track { position: absolute; left: 0; right: 0; bottom: 6px; height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+  .tl-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--ink); }
+  .mk { position: absolute; bottom: 4px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; width: 26px; height: 40px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+  .mk[data-row="1"] { height: 66px; }
+  .mk span { display: block; width: 24px; height: 24px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper); font-size: 12px; font-weight: 700; line-height: 21px; text-align: center; font-variant-numeric: tabular-nums; }
+  .mk::after { content: ""; flex: 1; width: 1.5px; background: var(--ink); }
+  .mk:hover span { background: var(--wash); }
+  .mk.on span { background: var(--ink); color: var(--paper); }
+  .mk:focus-visible { outline: none; }
+  .mk:focus-visible span { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .tmeta { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .fileinfo { margin-top: 2px; color: var(--ink-3); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vnote { margin-top: 10px; padding-left: 10px; border-left: 2px solid var(--ink); color: var(--ink-2); font-size: 14px; }
+
+  /* panel states */
+  .phase-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .phase-head h2, .ready h2 { font-size: 21px; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; }
+  .phase-head .num { font-size: 21px; font-weight: 600; }
+  .ready p { margin-top: 8px; color: var(--ink-2); max-width: 52ch; }
+  .bar { position: relative; height: 4px; margin: 16px 0 12px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--ink); transition: width .2s linear; }
+  .bar.ind i { width: 32%; animation: ind 1.4s cubic-bezier(.45, 0, .25, 1) infinite; }
+  @keyframes ind { from { transform: translateX(-100%); } to { transform: translateX(320%); } }
+  .pnote { margin-top: 8px; color: var(--ink); font-size: 14px; font-weight: 600; }
+  .pnote:empty { display: none; }
+
+  .share { margin-top: 28px; }
+  .share label { display: block; font-size: 14px; font-weight: 600; }
+  .share-row { display: flex; gap: 8px; margin-top: 6px; }
+  .share-row input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--wash); color: var(--ink-2); font: inherit; font-size: 14px; }
+  .share-row .btn { min-height: 40px; padding: 6px 14px; font-size: 14px; flex: none; }
+  .share .hint { margin-top: 6px; font-size: 13px; }
+
+  /* verdict */
+  .verdict { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: .45em; font-size: var(--vsize); }
+  .vsym { width: .56em; height: .56em; margin-top: .3em; border: .085em solid currentColor; border-radius: 50%; }
+  .verdict.bad .vsym { background: currentColor; }
+  .verdict h2 { font-size: 1em; line-height: 1.14; font-weight: 650; letter-spacing: -.022em; text-wrap: balance; }
+  .vdemo { display: inline-block; margin-top: 10px; padding: 3px 12px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: 14px; line-height: 20px; font-weight: 700; letter-spacing: 0; }
+  .vsub { grid-column: 2; margin-top: 10px; font-size: 17px; line-height: 1.4; color: var(--ink-2); }
+  .disclaimer { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 14px; }
+  .appear { animation: appear .32s ease-out both; }
+  @keyframes appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* violations */
+  .lead { margin-top: 22px; color: var(--ink-3); font-size: 14px; }
+  .viols { list-style: none; margin: 10px -14px 0; padding: 0; display: grid; gap: 4px; }
+  .viol { padding: 16px 14px 20px; border-radius: 12px; cursor: pointer; }
+  .viol.on { background: var(--wash); }
+  .vhead { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .vhead:focus-visible { outline-offset: 6px; border-radius: 8px; }
+  .vnum { display: block; width: 28px; height: 28px; border: 1.5px solid var(--ink); border-radius: 7px; font-size: 13px; font-weight: 700; line-height: 25px; text-align: center; font-variant-numeric: tabular-nums; }
+  .viol.on .vnum { background: var(--ink); color: var(--paper); }
+  .vtitle { padding-top: 1px; font-size: 18px; line-height: 1.38; font-weight: 650; letter-spacing: -.005em; overflow-wrap: anywhere; }
+  .vhead:hover .vtitle { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .vtc { display: inline-flex; align-items: center; gap: 7px; padding-top: 3px; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .vbody { padding-left: 42px; }
+  .vdesc { margin-top: 6px; color: var(--ink-2); overflow-wrap: anywhere; }
+  .vnorm { margin-top: 12px; color: var(--ink-2); font-size: 14px; overflow-wrap: anywhere; }
+  .vnorm b { color: var(--ink); font-weight: 650; }
+  .vweak { display: inline-block; margin-top: 8px; padding: 1px 9px; border: 1px dashed var(--ink-3); border-radius: 999px; color: var(--ink-2); font-size: 13px; }
+  .frames { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+  .frame { position: relative; margin: 0; }
+  .fthumb { display: block; padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; }
+  .fthumb img { display: block; height: 150px; width: auto; min-width: 80px; max-width: 260px; object-fit: cover; border: 1px solid var(--rule); border-radius: 7px; background: #000; }
+  .fthumb:hover img { border-color: var(--ink); }
+  .frame figcaption { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .fzoom { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-right: -4px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink); cursor: pointer; }
+  .fzoom:hover { background: var(--wash); }
+  .viol.on .fzoom:hover { background: var(--paper); }
+  .after { margin-top: 36px; padding-top: 4px; }
+  @media (max-width: 480px) {
+    .vhead { grid-template-columns: 28px minmax(0, 1fr); }
+    .vtc { grid-column: 2; padding-top: 0; }
+    .vbody { padding-left: 0; }
+    .vdesc { margin-top: 10px; }
+    .fthumb img { height: 140px; min-width: 76px; }
+    .viols { margin-left: -10px; margin-right: -10px; }
+    .viol { padding-left: 10px; padding-right: 10px; }
+  }
+
+  /* lightbox */
+  dialog.lb { width: fit-content; min-width: min(96vw, 400px); max-width: 96vw; max-height: 94vh; padding: 0; border: 0; border-radius: 14px; background: var(--paper); color: var(--ink); box-shadow: 0 24px 80px rgba(0, 0, 0, .45); }
+  dialog.lb::backdrop { background: var(--backdrop); }
+  .lb-in { display: flex; flex-direction: column; gap: 12px; padding: 14px; max-height: 94vh; }
+  .lb-in img { display: block; width: auto; max-width: 100%; height: auto; max-height: calc(94vh - 132px); margin: 0 auto; border-radius: 8px; }
+  .lb-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+  .lb-cap b { display: block; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .lb-cap span { color: var(--ink-2); font-size: 14px; }
+  .lb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    .bar.ind i { width: 100%; opacity: .35; transform: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Проверка видео кассира</h1>
-  <p class="muted">Результат — подсказка для проверяющего, а не юридическое заключение.</p>
-  <div class="card">
-    <div class="row"><label for="key">API-ключ</label><input id="key" type="text" autocomplete="off"></div>
-    <div class="row" style="margin-top:8px"><input id="file" type="file" accept=".mov,video/*"><button id="go">Проверить</button></div>
-    <progress id="up" value="0" max="100" hidden></progress>
-    <p id="status" class="muted"></p>
+<header class="wrap top">
+  <div class="brand">
+    <h1>Контроль кассовой дисциплины</h1>
+    <p>Загрузите запись с камеры кассы: сервис отметит моменты с признаками нарушений и укажет нормативы.</p>
   </div>
-  <div id="result"></div>
-</main>
-<script>
-const $ = (id) => document.getElementById(id);
-const params = new URLSearchParams(location.search);
-try { $("key").value = params.get("key") || localStorage.getItem("apiKey") || ""; } catch (e) {}
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  <div class="keybox">
+    <div class="keyview" id="keyView" hidden>
+      <span class="dot" aria-hidden="true"></span><span>API-ключ сохранён</span>
+      <button type="button" class="link" id="keyEdit">Изменить</button>
+    </div>
+    <form class="keyform" id="keyForm" hidden>
+      <label for="key">API-ключ</label>
+      <input id="key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Введите ключ">
+      <button type="submit" class="btn sm">Сохранить</button>
+      <button type="button" class="link" id="keyCancel" hidden>Отмена</button>
+    </form>
+    <p class="keyhint" id="keyHint" role="status" hidden></p>
+  </div>
+</header>
 
-$("go").onclick = () => {
-  const key = $("key").value.trim(), f = $("file").files[0];
-  if (!key || !f) { $("status").textContent = "Укажите ключ и выберите файл."; return; }
-  try { localStorage.setItem("apiKey", key); } catch (e) {}
-  const fd = new FormData(); fd.append("file", f);
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/api/v1/analyze"); xhr.setRequestHeader("X-API-Key", key);
-  $("up").hidden = false; $("go").disabled = true; $("result").innerHTML = "";
-  xhr.upload.onprogress = (e) => { if (e.lengthComputable) $("up").value = 100 * e.loaded / e.total; };
-  xhr.onload = () => {
-    $("up").hidden = true;
-    if (xhr.status !== 200) { $("status").textContent = "Ошибка загрузки: " + xhr.status + " " + xhr.responseText; $("go").disabled = false; return; }
-    let jobId = null;
-    try { jobId = JSON.parse(xhr.responseText).job_id; } catch (e) {}
-    if (!jobId) { $("status").textContent = "Ошибка: некорректный ответ сервера"; $("go").disabled = false; return; }
-    poll(jobId, key, Date.now(), 0);
-  };
-  xhr.onerror = () => { $("status").textContent = "Сеть недоступна"; $("go").disabled = false; };
-  xhr.onabort = () => { $("up").hidden = true; $("status").textContent = "Загрузка прервана"; $("go").disabled = false; };
-  xhr.ontimeout = () => { $("up").hidden = true; $("status").textContent = "Превышено время ожидания загрузки"; $("go").disabled = false; };
-  xhr.send(fd);
+<main class="wrap" id="main">
+  <section class="intake" id="intake" aria-label="Загрузка видео">
+    <div class="drop" id="drop">
+      <input type="file" id="file" class="sr-only" accept=".mov,video/*" tabindex="-1" aria-hidden="true">
+      <button type="button" class="drop-btn" id="pick">
+        <svg width="40" height="58" viewBox="0 0 40 58" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="1.75" width="30" height="54.5" rx="5"/><path d="M20 38V19M13 26l7-7 7 7"/></svg>
+        <span class="drop-title">Перетащите видео сюда</span>
+        <span class="drop-sub">или <u>выберите файл</u> на компьютере</span>
+        <span class="drop-note">Запись с камеры кассы, формат .mov</span>
+      </button>
+    </div>
+    <div id="intakeMsg" hidden></div>
+    <div class="intake-foot">
+      <p class="hint">Результат — подсказка для проверяющего, а не юридическое заключение.</p>
+      <button type="button" class="link hint" id="openLast" hidden>Открыть последнюю проверку</button>
+    </div>
+  </section>
+
+  <div class="work" id="work" hidden>
+    <section class="player" id="player" aria-label="Видео">
+      <video id="vid" controls playsinline preload="metadata"></video>
+      <div class="tl" id="tl" role="group" aria-label="Отметки нарушений на шкале времени">
+        <div class="tl-track" aria-hidden="true"><div class="tl-fill" id="tlFill"></div></div>
+        <div id="tlMarks"></div>
+      </div>
+      <div class="tmeta"><span><span id="tnow">00:00.0</span> / <span id="tdur">--:--</span></span></div>
+      <p class="fileinfo" id="fileinfo"></p>
+      <p class="vnote" id="vnote" hidden></p>
+    </section>
+    <section class="panel" id="panel" aria-label="Результат проверки">
+      <div id="stage"></div>
+    </section>
+  </div>
+</main>
+
+<div class="sr-only" id="live" aria-live="polite" aria-atomic="true"></div>
+
+<dialog class="lb" id="lb" aria-labelledby="lbCap">
+  <div class="lb-in">
+    <img id="lbImg" alt="">
+    <div class="lb-bar">
+      <p class="lb-cap" id="lbCap"></p>
+      <div class="lb-actions">
+        <button type="button" class="btn sm" id="lbSeek">Показать в видео</button>
+        <button type="button" class="btn sm primary" id="lbClose">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const BASE_TITLE = "Контроль кассовой дисциплины";
+const ID_RE = /^[A-Za-z0-9]{1,64}$/;
+const B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+const ICON_PLAY = '<svg width="9" height="10" viewBox="0 0 9 10" aria-hidden="true"><path d="M0 0L9 5L0 10Z" fill="currentColor"/></svg>';
+const ICON_ZOOM = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 2h4v4M6 14H2v-4M14 2L9.5 6.5M2 14l4.5-4.5"/></svg>';
+
+const LS = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function safeUrl(u) {
+  if (typeof u !== "string" || !u) return null;
+  try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:" ? x.href : null; } catch (e) { return null; }
+}
+const num = (x) => { const n = Number(x); return Number.isFinite(n) && n >= 0 ? n : 0; };
+function fmt(t) {
+  const n = Math.max(0, Math.round(num(t) * 10));
+  const m = Math.floor(n / 600), s = (n % 600) / 10;
+  return String(m).padStart(2, "0") + ":" + s.toFixed(1).padStart(4, "0");
+}
+function fmtDur(sec) {
+  if (sec < 60) return sec + " с";
+  return Math.floor(sec / 60) + " мин " + String(sec % 60).padStart(2, "0") + " с";
+}
+function plural(n, one, few, many) {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return one;
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few;
+  return many;
+}
+function fsize(b) {
+  const mb = b / 1048576;
+  return mb >= 1 ? mb.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " МБ" : Math.max(1, Math.round(b / 1024)) + " КБ";
+}
+const reduced = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+const behavior = () => (reduced() ? "auto" : "smooth");
+const announce = (msg) => { $("live").textContent = ""; setTimeout(() => { $("live").textContent = msg; }, 30); };
+
+/* ---------- state ---------- */
+const S = {
+  key: "", phase: "idle", file: null, objUrl: null, xhr: null,
+  jobId: null, t0: 0, resume: false, gen: 0, pollTimer: 0, tick: 0,
+  violations: [], active: -1, duration: 0, retry: null, pending: null,
 };
 
-async function poll(id, key, t0, retries) {
-  let r, d;
+/* ---------- URL + storage ---------- */
+const params = new URLSearchParams(location.search);
+function setUrl(jobId) {
+  try { history.replaceState(null, "", location.pathname + (jobId ? "?job=" + encodeURIComponent(jobId) : "") + location.hash); } catch (e) {}
+}
+function saveLast(id, t0, status) { LS.set("lastJob", JSON.stringify({ id, t0, status })); }
+function readLast() {
   try {
-    r = await fetch("/api/v1/jobs/" + id, { headers: { "X-API-Key": key } });
-    d = await r.json();
-  } catch (e) {
-    if (retries < 5) {
-      $("status").textContent = "Нет связи, повтор… (задача " + id + ")";
-      setTimeout(() => poll(id, key, t0, retries + 1), 3000); return;
-    }
-    $("status").textContent = "Нет связи с сервером. Задача " + id + ": проверьте позже.";
-    $("go").disabled = false; return;
-  }
-  if (!r.ok) {
-    $("go").disabled = false;
-    $("status").textContent = "Ошибка: " + r.status + " " + (typeof d.detail === "string" ? d.detail : "") + " (задача " + id + ")";
-    return;
-  }
-  if (d.status === "processing") {
-    $("status").textContent = "Идёт анализ… " + Math.round((Date.now() - t0) / 1000) + " с";
-    setTimeout(() => poll(id, key, t0, 0), 2000); return;
-  }
-  $("go").disabled = false;
-  if (d.status === "failed") { $("status").textContent = "Не удалось обработать: " + (d.error || ""); return; }
-  $("status").textContent = "Готово за " + Math.round((Date.now() - t0) / 1000) + " с";
-  render(d);
+    const o = JSON.parse(LS.get("lastJob") || "null");
+    if (o && typeof o.id === "string" && ID_RE.test(o.id)) return { id: o.id, t0: Number(o.t0) || 0, status: String(o.status || "") };
+  } catch (e) {}
+  return null;
+}
+function refreshLast() {
+  const last = readLast();
+  $("openLast").hidden = !last || last.status === "processing";
+}
+const shareUrl = (id) => location.origin + location.pathname + "?job=" + encodeURIComponent(id);
+const videoUrl = (id) => "/api/v1/jobs/" + encodeURIComponent(id) + "/video?key=" + encodeURIComponent(S.key);
+
+/* ---------- API key ---------- */
+try { S.key = (params.get("key") || localStorage.getItem("apiKey") || "").trim(); } catch (e) { S.key = (params.get("key") || "").trim(); }
+if (params.get("key") && S.key && LS.set("apiKey", S.key)) {
+  // the key is remembered in this browser, so keep it out of the address bar
+  try { params.delete("key"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "") + location.hash); } catch (e) {}
+}
+function keyHint(msg) { $("keyHint").textContent = msg || ""; $("keyHint").hidden = !msg; }
+function renderKey(editing) {
+  const open = editing || !S.key;
+  $("keyView").hidden = open;
+  $("keyForm").hidden = !open;
+  $("keyCancel").hidden = !S.key;
+  if (open) $("key").value = S.key;
+}
+function needKey(msg, then) {
+  S.pending = then || null;
+  renderKey(true);
+  keyHint(msg);
+  $("key").focus();
+}
+$("keyEdit").addEventListener("click", () => { renderKey(true); $("key").focus(); $("key").select(); });
+$("keyCancel").addEventListener("click", () => { keyHint(""); renderKey(false); $("keyEdit").focus(); });
+$("key").addEventListener("keydown", (e) => { if (e.key === "Escape" && S.key) { keyHint(""); renderKey(false); $("keyEdit").focus(); } });
+$("keyForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("key").value.trim();
+  if (!v) { keyHint("Введите ключ."); $("key").focus(); return; }
+  S.key = v; LS.set("apiKey", v);
+  keyHint(""); renderKey(false);
+  announce("API-ключ сохранён");
+  const next = S.pending; S.pending = null;
+  if (next) next(); else $("keyEdit").focus();
+});
+function takeTypedKey() {
+  if (S.key) return;
+  const typed = $("key").value.trim();
+  if (typed) { S.key = typed; LS.set("apiKey", typed); renderKey(false); keyHint(""); }
 }
 
-function render(d) {
-  if (d.verdict !== "violation" && d.verdict !== "no_violation") {
-    $("status").textContent = "Ошибка: неизвестный результат анализа (задача " + d.job_id + ")";
-    $("result").innerHTML = ""; return;
-  }
-  const bad = d.verdict === "violation";
-  let html = `<div class="card"><div class="verdict ${bad ? "bad" : "ok"}">${bad ? "Обнаружены признаки возможных нарушений" : "Нарушение не обнаружено"}</div></div>`;
-  for (const v of d.violations || []) {
-    const rule = v.rule ? `<p><b>Норматив:</b> ${v.rule.url ? `<a href="${esc(v.rule.url)}" target="_blank" rel="noopener">${esc(v.rule.act)}</a>` : esc(v.rule.act)}, ${esc(v.rule.point)}</p>` : "";
-    const frames = v.evidence_frames.map((f) => `<figure><img alt="кадр ${f.timestamp_sec} с" src="data:image/jpeg;base64,${f.image_base64}"><figcaption>${f.timestamp_sec.toFixed(1)} с</figcaption></figure>`).join("");
-    html += `<div class="card"><h3>${esc(v.type)} — ${v.timecode_sec.toFixed(1)} с</h3><p>${esc(v.description)}</p>${rule}<div class="frames">${frames}</div></div>`;
-  }
-  $("result").innerHTML = html;
+/* ---------- video + timeline ---------- */
+const vid = $("vid");
+function setVideo(src) {
+  S.duration = 0;
+  $("vnote").hidden = true;
+  $("work").classList.remove("wide");
+  try { vid.pause(); } catch (e) {}
+  if (src) { vid.src = src; } else { vid.removeAttribute("src"); try { vid.load(); } catch (e) {} }
+  $("tdur").textContent = "--:--";
+  $("tl").classList.remove("seekable");
+  renderMarks(); updateTime();
 }
+function onMeta() {
+  const d = vid.duration;
+  S.duration = Number.isFinite(d) && d > 0 ? d : 0;
+  $("tdur").textContent = S.duration ? fmt(S.duration) : "--:--";
+  $("tl").classList.toggle("seekable", !!S.duration);
+  if (vid.videoWidth && vid.videoHeight) $("work").classList.toggle("wide", vid.videoWidth > vid.videoHeight);
+  renderMarks(); updateTime();
+}
+vid.addEventListener("loadedmetadata", onMeta);
+vid.addEventListener("durationchange", onMeta);
+vid.addEventListener("loadeddata", () => { $("vnote").hidden = true; });
+vid.addEventListener("error", () => {
+  if (!vid.getAttribute("src")) return;
+  $("vnote").textContent = S.objUrl
+    ? "Видео не воспроизводится в этом браузере. Отметки и кадры в результатах остаются доступны."
+    : "Не удалось загрузить видео с сервера. Отметки и кадры в результатах остаются доступны.";
+  $("vnote").hidden = false;
+});
+let raf = 0, lastNow = "";
+function updateTime() {
+  const t = vid.currentTime || 0, d = S.duration;
+  const now = fmt(t);
+  if (now !== lastNow) { $("tnow").textContent = now; lastNow = now; }
+  $("tlFill").style.width = d ? Math.min(100, (t / d) * 100) + "%" : "0%";
+  updateActive(t);
+}
+function loop() { updateTime(); raf = requestAnimationFrame(loop); }
+vid.addEventListener("play", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); });
+["pause", "ended", "emptied"].forEach((ev) => vid.addEventListener(ev, () => { cancelAnimationFrame(raf); updateTime(); }));
+["timeupdate", "seeked", "seeking"].forEach((ev) => vid.addEventListener(ev, updateTime));
+
+function renderMarks() {
+  const box = $("tlMarks"), d = S.duration, vs = S.violations;
+  if (!d || !vs.length) { box.innerHTML = ""; $("tl").classList.remove("two", "has"); return; }
+  const lastPct = [-1e9, -1e9];
+  let two = false;
+  box.innerHTML = vs.map((v, i) => {
+    const pct = Math.min(100, Math.max(0, (v.t / d) * 100));
+    let row = 0;
+    if (pct - lastPct[0] < 8) { row = pct - lastPct[1] < 8 ? 0 : 1; }
+    lastPct[row] = pct;
+    if (row) two = true;
+    const label = "Нарушение " + (i + 1) + ": " + v.type + ", " + fmt(v.t);
+    return '<button type="button" class="mk' + (i === S.active ? " on" : "") + '" data-i="' + i + '" data-row="' + row +
+      '" style="left:clamp(13px,' + pct.toFixed(3) + '%,calc(100% - 13px))" aria-label="' + esc(label) + '"><span>' + (i + 1) + "</span></button>";
+  }).join("");
+  $("tl").classList.add("has");
+  $("tl").classList.toggle("two", two);
+}
+function updateActive(t) {
+  if (!S.violations.length) return;
+  let a = -1;
+  S.violations.forEach((v, i) => { if (t >= v.w0 && t <= v.w1) a = i; });
+  if (a !== S.active) setActive(a);
+}
+function setActive(i) {
+  if (i === S.active) return;
+  S.active = i;
+  document.querySelectorAll(".mk").forEach((m) => m.classList.toggle("on", Number(m.dataset.i) === i));
+  document.querySelectorAll(".viol").forEach((c) => {
+    const on = Number(c.dataset.i) === i;
+    c.classList.toggle("on", on);
+    if (on) c.setAttribute("aria-current", "time"); else c.removeAttribute("aria-current");
+  });
+}
+function playFrom(t, mode) {
+  if (!vid.getAttribute("src")) return;
+  try { vid.currentTime = Math.max(0, t); } catch (e) {}
+  if (mode === true) { const p = vid.play(); if (p && p.catch) p.catch(() => {}); }
+  else if (mode === false) vid.pause();
+  updateTime();
+}
+function ensurePlayerVisible() {
+  const r = vid.getBoundingClientRect();
+  const visible = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0);
+  if (visible < r.height * 0.6) $("player").scrollIntoView({ block: "start", behavior: behavior() });
+}
+function seekViolation(i, fromMarker) {
+  const v = S.violations[i];
+  if (!v) return;
+  setActive(i);
+  playFrom(Math.max(0, v.t - 1.0), true);
+  if (fromMarker) {
+    // stacked (phone) layout: the card is far below the player, so only highlight it, never scroll away from the video
+    if (window.matchMedia && matchMedia("(max-width: 819px)").matches) return;
+    const card = document.querySelector('.viol[data-i="' + i + '"]');
+    if (card) card.scrollIntoView({ block: "nearest", behavior: behavior() });
+  } else ensurePlayerVisible();
+}
+function seekFrame(i, j) {
+  const v = S.violations[i], f = v && v.frames[j];
+  if (!f) return;
+  setActive(i);
+  playFrom(f.t, false);
+  ensurePlayerVisible();
+}
+$("tl").addEventListener("click", (e) => {
+  const mk = e.target.closest(".mk");
+  if (mk) { seekViolation(Number(mk.dataset.i), true); return; }
+  if (!S.duration) return;
+  const r = $("tl").getBoundingClientRect();
+  playFrom(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * S.duration, null);
+});
+
+/* ---------- panel rendering ---------- */
+const stage = $("stage");
+function alertHtml(title, text, meta, extra) {
+  return '<div class="alert" role="alert"><span class="alert-ico" aria-hidden="true">!</span><div>' +
+    '<p class="alert-title">' + esc(title) + "</p>" + (text ? '<p class="alert-text">' + esc(text) + "</p>" : "") +
+    (meta ? '<p class="alert-meta">' + esc(meta) + "</p>" : "") + (extra || "") + "</div></div>";
+}
+const RESET_BTN = '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div>';
+function shareHtml(id) {
+  return '<div class="share"><label for="shareUrl">Ссылка на результат</label><div class="share-row">' +
+    '<input id="shareUrl" type="text" readonly value="' + esc(shareUrl(id)) + '">' +
+    '<button type="button" class="btn" data-act="copy">Скопировать</button></div>' +
+    '<p class="hint">Откроется в браузере, где сохранён API-ключ.</p></div>';
+}
+function setPhase(p) {
+  S.phase = p;
+  clearInterval(S.tick); S.tick = 0;
+  window.onbeforeunload = p === "uploading" ? (e) => { e.preventDefault(); e.returnValue = ""; return ""; } : null;
+  if (p === "ready") {
+    document.title = BASE_TITLE;
+    stage.innerHTML = '<div class="ready"><h2>Видео готово к проверке</h2>' +
+      "<p>Сервис найдёт моменты с признаками нарушений и отметит их на шкале под видео. Обычно проверка занимает до 2 минут.</p>" +
+      '<div class="actions"><button type="button" class="btn primary" data-act="go">Проверить видео</button>' +
+      '<button type="button" class="btn" data-act="change">Выбрать другой файл</button></div>' +
+      '<p class="pnote" id="pnote"></p></div>';
+  } else if (p === "uploading") {
+    document.title = "Загрузка видео — " + BASE_TITLE;
+    stage.innerHTML = '<div class="phase-head"><h2>Загрузка видео</h2><span class="num" id="upPct">0 %</span></div>' +
+      '<div class="bar" id="upBar" role="progressbar" aria-label="Загрузка видео" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>' +
+      '<p class="hint" id="upHint">Не закрывайте страницу до окончания загрузки.</p>' +
+      '<div class="actions"><button type="button" class="btn" data-act="cancel">Отменить загрузку</button></div>';
+    announce("Загрузка видео");
+  } else if (p === "loading") {
+    document.title = BASE_TITLE;
+    stage.innerHTML = '<div class="phase-head"><h2>Загружаем результат</h2></div>' +
+      '<div class="bar ind" role="progressbar" aria-label="Загрузка результата"><i></i></div>' +
+      '<p class="hint">Задача <span class="num">' + esc(S.jobId) + "</span></p>" + '<p class="pnote" id="pnote"></p>' + RESET_BTN;
+  } else if (p === "processing") {
+    document.title = "Идёт анализ — " + BASE_TITLE;
+    stage.innerHTML = '<div class="phase-head"><h2>Идёт анализ</h2><span class="num" id="elapsed" aria-hidden="true">0 с</span></div>' +
+      '<div class="bar ind" role="progressbar" aria-label="Идёт анализ"><i></i></div>' +
+      '<p class="hint" id="phint">Обычно до 2 минут. Страницу можно закрыть: результат откроется по ссылке.</p>' +
+      '<p class="pnote" id="pnote"></p>' + shareHtml(S.jobId) + RESET_BTN;
+    S.tick = setInterval(updElapsed, 1000); updElapsed();
+    announce("Идёт анализ, обычно до 2 минут.");
+  } else if (p === "needkey") {
+    document.title = BASE_TITLE;
+    stage.innerHTML = alertHtml("Нужен API-ключ", "Введите ключ в поле вверху страницы, чтобы открыть результат.", "Задача " + S.jobId);
+  }
+}
+function updElapsed() {
+  const el = $("elapsed");
+  if (!el) return;
+  const s = Math.max(0, Math.round((Date.now() - S.t0) / 1000));
+  el.textContent = fmtDur(s);
+  if (s > 150 && $("phint")) $("phint").textContent = "Анализ идёт дольше обычного. Страницу можно закрыть и открыть результат позже по ссылке.";
+}
+function setUpload(p) {
+  const v = Math.max(0, Math.min(100, Math.round(p)));
+  const bar = $("upBar");
+  if (!bar) return;
+  bar.firstElementChild.style.width = v + "%";
+  bar.setAttribute("aria-valuenow", String(v));
+  $("upPct").textContent = v + " %";
+  if (v >= 100) $("upHint").textContent = "Файл отправлен, сервер сохраняет видео…";
+}
+function showError(title, text, retry) {
+  S.phase = "error"; S.retry = retry || null;
+  clearInterval(S.tick); S.tick = 0;
+  window.onbeforeunload = null;
+  document.title = "Ошибка — " + BASE_TITLE;
+  stage.innerHTML = alertHtml(title, text, S.jobId ? "Задача " + S.jobId : "") +
+    '<div class="actions">' + (retry ? '<button type="button" class="btn primary" data-act="retry">Повторить</button>' : "") +
+    '<button type="button" class="btn" data-act="reset">Проверить другое видео</button></div>';
+}
+function showFailed(err) {
+  S.phase = "failed";
+  clearInterval(S.tick); S.tick = 0;
+  saveLast(S.jobId, S.t0, "failed");
+  document.title = "Не удалось обработать — " + BASE_TITLE;
+  const tech = '<details class="tech"><summary>Подробнее</summary><pre>' + esc(err ? String(err) : "Сервер не сообщил причину.") + "</pre></details>";
+  stage.innerHTML = alertHtml("Не удалось обработать видео", "Проверьте, что файл — видеозапись .mov, и попробуйте ещё раз.", "Задача " + S.jobId, tech) +
+    '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div>';
+}
+function normViolations(list) {
+  return (Array.isArray(list) ? list : []).map((raw) => {
+    const v = raw && typeof raw === "object" ? raw : {};
+    const frames = (Array.isArray(v.evidence_frames) ? v.evidence_frames : []).map((f) => ({
+      t: num(f && f.timestamp_sec),
+      img: f && typeof f.image_base64 === "string" && B64_RE.test(f.image_base64) ? f.image_base64 : null,
+    })).filter((f) => f.img);
+    const r = v.rule && typeof v.rule === "object" ? v.rule : null;
+    const t = num(v.timecode_sec);
+    const ts = [t].concat(frames.map((f) => f.t));
+    return {
+      type: v.type == null || v.type === "" ? "Возможное нарушение" : String(v.type),
+      t,
+      desc: v.description == null ? "" : String(v.description),
+      frames,
+      rule: r ? { act: r.act == null ? "" : String(r.act), point: r.point == null ? "" : String(r.point), strength: String(r.strength == null ? "" : r.strength), url: safeUrl(r.url) } : null,
+      w0: Math.min.apply(null, ts) - 1.2,
+      w1: Math.max.apply(null, ts) + 2,
+    };
+  }).sort((a, b) => a.t - b.t);
+}
+function violHtml(v, i) {
+  let norm = "";
+  const r = v.rule;
+  if (r && (r.act || r.point)) {
+    const actText = r.act || "Норматив";
+    const act = r.url ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer">' + esc(actText) + '<span class="sr-only"> (откроется в новой вкладке)</span></a>' : esc(r.act);
+    norm = '<p class="vnorm"><b>Норматив:</b> ' + act + (r.point ? (r.act ? ", " : "") + esc(r.point) : "") + "</p>";
+    if (r.strength === "Н") norm += '<p class="vweak">возможное несоответствие</p>';
+  }
+  const frames = v.frames.map((f, j) => {
+    const tc = fmt(f.t);
+    return '<li><figure class="frame"><button type="button" class="fthumb" data-i="' + i + '" data-j="' + j + '" aria-label="Показать в видео кадр ' + tc + '">' +
+      '<img src="data:image/jpeg;base64,' + f.img + '" alt="Кадр ' + tc + ": " + esc(v.type) + '" decoding="async"></button>' +
+      '<figcaption><span>' + tc + '</span><button type="button" class="fzoom" data-i="' + i + '" data-j="' + j + '" aria-label="Увеличить кадр ' + tc + '" title="Увеличить">' + ICON_ZOOM + "</button></figcaption></figure></li>";
+  }).join("");
+  const headLabel = "Нарушение " + (i + 1) + ": " + v.type + ", " + fmt(v.t) + ". Смотреть в видео";
+  return '<li class="viol" data-i="' + i + '">' +
+    '<button type="button" class="vhead" data-i="' + i + '" aria-label="' + esc(headLabel) + '">' +
+    '<span class="vnum" aria-hidden="true">' + (i + 1) + "</span>" +
+    '<span class="vtitle">' + esc(v.type) + "</span>" +
+    '<span class="vtc">' + ICON_PLAY + fmt(v.t) + "</span></button>" +
+    '<div class="vbody">' + (v.desc ? '<p class="vdesc">' + esc(v.desc) + "</p>" : "") + norm +
+    (frames ? '<ul class="frames" aria-label="Кадры-доказательства">' + frames + "</ul>" : "") + "</div></li>";
+}
+function renderDone(d) {
+  if (d.verdict !== "violation" && d.verdict !== "no_violation") {
+    showError("Неизвестный результат анализа", "Сервер вернул ответ без понятного вердикта. Результат не показан, чтобы не ввести в заблуждение.", null);
+    return;
+  }
+  S.phase = "done";
+  clearInterval(S.tick); S.tick = 0;
+  S.violations = normViolations(d.violations); S.active = -1;
+  const vs = S.violations, n = vs.length, bad = d.verdict === "violation";
+  const title = bad ? "Обнаружены признаки возможных нарушений" : "Нарушение не обнаружено";
+  const demo = vs.some((v) => v.type.indexOf("ДЕМО — ") === 0), DEMO = "Демо-режим — это не результат анализа";
+  let sub;
+  if (bad) sub = n ? "Найдено " + n + " " + plural(n, "возможное нарушение", "возможных нарушения", "возможных нарушений") : "Сервер не передал подробностей.";
+  else sub = n ? "Отмечено " + n + " " + plural(n, "момент", "момента", "моментов") + " для просмотра" : "Признаков нарушений не найдено";
+  stage.innerHTML = '<div class="appear"><div class="verdict ' + (bad ? "bad" : "ok") + '"><span class="vsym" aria-hidden="true"></span>' +
+    '<div><h2 id="vh" tabindex="-1">' + title + '</h2>' + (demo ? '<p class="vdemo">' + DEMO + "</p>" : "") + '</div><p class="vsub">' + esc(sub) + "</p></div>" +
+    '<p class="disclaimer">Результат — подсказка для проверяющего, а не юридическое заключение.</p>' +
+    (n ? '<p class="lead">Нажмите на нарушение или отметку на шкале: видео перейдёт к этому моменту.</p><ol class="viols">' + vs.map(violHtml).join("") + "</ol>" : "") +
+    "</div>" +
+    '<div class="after">' + shareHtml(S.jobId) +
+    '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div></div>';
+  document.title = (demo ? DEMO + " · " : "") + (bad ? "● Найдено нарушений: " + n : "○ Нарушений не найдено") + " — " + BASE_TITLE;
+  saveLast(S.jobId, S.t0, "done");
+  renderMarks(); updateTime();
+  announce("Готово. " + (demo ? DEMO + ". " : "") + title + ". " + sub + ".");
+}
+
+/* ---------- polling (hardened) ---------- */
+function startPolling(id) {
+  const gen = ++S.gen;
+  clearTimeout(S.pollTimer);
+  poll(id, gen, 0);
+}
+function pnote(msg) { const el = $("pnote"); if (el) el.textContent = msg || ""; }
+function retryLater(id, gen, retries) {
+  if (gen !== S.gen) return;
+  if (retries < 5) {
+    pnote("Нет связи с сервером, повтор через 3 с (попытка " + (retries + 1) + " из 5).");
+    S.pollTimer = setTimeout(() => poll(id, gen, retries + 1), 3000);
+    return;
+  }
+  showError("Нет связи с сервером", "Не удалось получить результат. Проверьте, что сервер запущен, и нажмите «Повторить»: задача сохранена на сервере.", () => { setPhase("loading"); startPolling(id); });
+}
+async function poll(id, gen, retries) {
+  if (gen !== S.gen) return;
+  let r;
+  try {
+    r = await fetch("/api/v1/jobs/" + encodeURIComponent(id), { headers: { "X-API-Key": S.key }, cache: "no-store" });
+  } catch (e) { retryLater(id, gen, retries); return; }
+  if (gen !== S.gen) return;
+  if (!r.ok) {
+    let detail = "";
+    try { const d = await r.json(); if (d && typeof d.detail === "string") detail = d.detail; } catch (e) {}
+    if (gen !== S.gen) return;
+    // deep-link mode streams the video from the server, so a new key must reach the <video> too
+    const again = () => { if (!S.objUrl && vid.getAttribute("src") !== videoUrl(id)) setVideo(videoUrl(id)); setPhase("loading"); startPolling(id); };
+    if (r.status === 401) {
+      showError("Неверный API-ключ", "Сервер отклонил ключ. Введите правильный ключ вверху страницы: проверка продолжится.", again);
+      needKey("Введите правильный API-ключ.", again);
+    } else if (r.status === 404) {
+      const last = readLast();
+      if (last && last.id === id) LS.del("lastJob");
+      if (!S.objUrl) { setVideo(null); $("player").hidden = true; $("work").classList.add("noplayer"); }
+      showError("Задача не найдена", "На сервере нет задачи " + id + ". Возможно, ссылка устарела. Загрузите видео заново.", null);
+    } else {
+      showError("Ошибка сервера: " + r.status, detail || "Не удалось получить результат.", again);
+    }
+    return;
+  }
+  let d;
+  try { d = await r.json(); } catch (e) { retryLater(id, gen, retries); return; }
+  if (gen !== S.gen) return;
+  if (!d || typeof d !== "object") { showError("Некорректный ответ сервера", "", () => { setPhase("loading"); startPolling(id); }); return; }
+  if (d.status === "processing") {
+    S.resume = false;
+    if (S.phase !== "processing") setPhase("processing");
+    pnote("");
+    S.pollTimer = setTimeout(() => poll(id, gen, 0), 2000);
+    return;
+  }
+  if (S.resume) {
+    // resumed from storage without ?job=: only a still-running job is reopened; a finished one stays behind "Открыть последнюю проверку"
+    S.resume = false;
+    if (d.status === "failed" || d.status === "done") { saveLast(id, S.t0, d.status); resetAll(true); return; }
+  }
+  if (d.status === "failed") { showFailed(d.error); return; }
+  if (d.status === "done") { renderDone(d); return; }
+  showError("Неизвестный статус задачи", "Сервер вернул статус, который интерфейс не понимает.", () => { setPhase("loading"); startPolling(id); });
+}
+
+/* ---------- upload ---------- */
+function startUpload() {
+  if (!S.file) return;
+  takeTypedKey();
+  if (!S.key) {
+    needKey("Введите API-ключ, чтобы начать проверку.", startUpload);
+    pnote("Сначала введите API-ключ вверху страницы.");
+    return;
+  }
+  const fd = new FormData();
+  fd.append("file", S.file);
+  const xhr = new XMLHttpRequest();
+  S.xhr = xhr;
+  xhr.open("POST", "/api/v1/analyze");
+  xhr.setRequestHeader("X-API-Key", S.key);
+  setPhase("uploading");
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUpload((100 * e.loaded) / e.total); };
+  xhr.onload = () => {
+    S.xhr = null;
+    if (xhr.status !== 200) {
+      let detail = "";
+      try { const j = JSON.parse(xhr.responseText); if (j && typeof j.detail === "string") detail = j.detail; } catch (e) {}
+      if (xhr.status === 401) {
+        showError("Неверный API-ключ", "Сервер отклонил ключ. Введите правильный ключ вверху страницы и повторите.", startUpload);
+        needKey("Введите правильный API-ключ.", startUpload);
+      } else if (xhr.status === 413) {
+        showError("Файл слишком большой", "Сервер не принял файл такого размера. Выберите запись меньшего размера.", null);
+      } else if (xhr.status === 400) {
+        showError("Файл не принят", detail === "empty file" ? "Файл пустой." : detail || "Сервер отклонил файл.", null);
+      } else {
+        showError("Ошибка загрузки: " + xhr.status, detail || "Сервер не принял видео.", startUpload);
+      }
+      return;
+    }
+    let jobId = null;
+    try { jobId = JSON.parse(xhr.responseText).job_id; } catch (e) {}
+    if (typeof jobId !== "string" || !ID_RE.test(jobId)) { showError("Некорректный ответ сервера", "Сервер не вернул номер задачи.", startUpload); return; }
+    S.jobId = jobId; S.t0 = Date.now();
+    saveLast(jobId, S.t0, "processing");
+    setUrl(jobId);
+    setPhase("processing");
+    startPolling(jobId);
+  };
+  xhr.onerror = () => { S.xhr = null; showError("Сеть недоступна", "Не удалось отправить видео. Проверьте, что сервер запущен.", startUpload); };
+  xhr.ontimeout = () => { S.xhr = null; showError("Превышено время ожидания загрузки", "", startUpload); };
+  xhr.onabort = () => { S.xhr = null; setPhase("ready"); pnote("Загрузка отменена."); announce("Загрузка отменена"); };
+  xhr.send(fd);
+}
+
+/* ---------- flow ---------- */
+function stopJob() {
+  S.gen++;
+  clearTimeout(S.pollTimer); clearInterval(S.tick); S.tick = 0;
+  S.resume = false;
+  if (S.xhr) { S.xhr.onabort = null; S.xhr.abort(); S.xhr = null; }
+  window.onbeforeunload = null;
+  S.jobId = null; S.violations = []; S.active = -1; S.retry = null; S.pending = null;
+  setUrl(null);
+  document.title = BASE_TITLE;
+}
+function showWork() {
+  document.body.classList.add("working");
+  $("player").hidden = false;
+  $("work").classList.remove("noplayer");
+  $("intake").hidden = true;
+  $("work").hidden = false;
+  $("intakeMsg").hidden = true;
+}
+function intakeMsg(title, text) {
+  const box = $("intakeMsg");
+  box.innerHTML = alertHtml(title, text);
+  box.hidden = false;
+}
+function looksLikeVideo(f) {
+  return (f.type && f.type.indexOf("video/") === 0) || /\.(mov|mp4|m4v|avi|mkv|webm|3gp|qt)$/i.test(f.name || "");
+}
+const busy = () => S.phase === "uploading" || S.phase === "processing" || S.phase === "loading";
+function chooseFile(f) {
+  if (!f || busy()) return;
+  if (!looksLikeVideo(f)) {
+    if (!$("work").hidden) showError("Это не видеофайл", "Выберите запись с камеры в формате .mov или другом видеоформате.", null);
+    else intakeMsg("Это не видеофайл", "Выберите запись с камеры в формате .mov или другом видеоформате.");
+    return;
+  }
+  stopJob();
+  if (S.objUrl) URL.revokeObjectURL(S.objUrl);
+  S.file = f;
+  S.objUrl = URL.createObjectURL(f);
+  showWork();
+  setVideo(S.objUrl);
+  $("fileinfo").textContent = f.name + ", " + fsize(f.size);
+  $("fileinfo").title = f.name;
+  setPhase("ready");
+  announce("Выбран файл " + f.name + ". Нажмите «Проверить видео».");
+  // phones: the player fills the screen, so bring the next step into view
+  if (window.matchMedia && matchMedia("(max-width: 819px)").matches) {
+    const a = stage.querySelector(".actions");
+    if (a) setTimeout(() => a.scrollIntoView({ block: "nearest", behavior: behavior() }), 50);
+  }
+}
+function openJob(id, t0, resume) {
+  stopJob();
+  S.resume = !!resume;
+  if (S.objUrl) { URL.revokeObjectURL(S.objUrl); S.objUrl = null; }
+  S.file = null;
+  S.jobId = id; S.t0 = t0 || Date.now();
+  showWork();
+  $("fileinfo").textContent = "Задача " + id;
+  $("fileinfo").title = "";
+  setUrl(id);
+  const go = () => { setVideo(videoUrl(id)); setPhase("loading"); startPolling(id); };
+  if (!S.key) {
+    setVideo(null);
+    setPhase("needkey");
+    needKey("Введите API-ключ, чтобы открыть результат.", go);
+    return;
+  }
+  go();
+}
+function resetAll(keepLast) {
+  stopJob();
+  if (!keepLast) LS.del("lastJob");
+  if (S.objUrl) { URL.revokeObjectURL(S.objUrl); S.objUrl = null; }
+  S.file = null; S.phase = "idle";
+  setVideo(null);
+  stage.innerHTML = "";
+  document.body.classList.remove("working");
+  $("work").hidden = true;
+  $("intake").hidden = false;
+  $("intakeMsg").hidden = true;
+  refreshLast();
+  $("pick").focus();
+}
+
+/* ---------- copy link ---------- */
+async function copyLink(btn) {
+  const input = $("shareUrl");
+  if (!input) return;
+  let ok = false;
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(input.value); ok = true; } } catch (e) {}
+  if (!ok) { input.focus(); input.select(); try { ok = document.execCommand("copy"); } catch (e) {} }
+  btn.textContent = ok ? "Скопировано" : "Выделено";
+  announce(ok ? "Ссылка скопирована" : "Ссылка выделена, скопируйте её вручную");
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { btn.textContent = "Скопировать"; }, 2000);
+}
+
+/* ---------- lightbox ---------- */
+const lb = $("lb");
+let lbAt = null;
+function openLightbox(i, j) {
+  const v = S.violations[i], f = v && v.frames[j];
+  if (!f) return;
+  lbAt = { i, j };
+  $("lbImg").src = "data:image/jpeg;base64," + f.img;
+  $("lbImg").alt = "Кадр " + fmt(f.t) + ": " + v.type;
+  $("lbCap").innerHTML = "<b>Кадр " + fmt(f.t) + "</b><span>" + esc(v.type) + "</span>";
+  if (typeof lb.showModal === "function") lb.showModal(); else lb.setAttribute("open", "");
+  $("lbClose").focus();
+}
+function closeLightbox() { if (typeof lb.close === "function") lb.close(); else lb.removeAttribute("open"); }
+$("lbClose").addEventListener("click", closeLightbox);
+lb.addEventListener("click", (e) => { if (e.target === lb) closeLightbox(); });
+$("lbSeek").addEventListener("click", () => { const at = lbAt; closeLightbox(); if (at) seekFrame(at.i, at.j); });
+
+/* ---------- events ---------- */
+$("pick").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", () => { const f = $("file").files[0]; $("file").value = ""; chooseFile(f); });
+$("openLast").addEventListener("click", () => { const last = readLast(); if (last) openJob(last.id, last.t0); });
+stage.addEventListener("click", (e) => {
+  const act = e.target.closest("[data-act]");
+  if (act) {
+    const a = act.dataset.act;
+    if (a === "go") startUpload();
+    else if (a === "change") $("file").click();
+    else if (a === "cancel") { if (S.xhr) S.xhr.abort(); }
+    else if (a === "reset") resetAll();
+    else if (a === "retry") { if (S.retry) S.retry(); }
+    else if (a === "copy") copyLink(act);
+    return;
+  }
+  const zoom = e.target.closest(".fzoom");
+  if (zoom) { openLightbox(Number(zoom.dataset.i), Number(zoom.dataset.j)); return; }
+  const thumb = e.target.closest(".fthumb");
+  if (thumb) { seekFrame(Number(thumb.dataset.i), Number(thumb.dataset.j)); return; }
+  const head = e.target.closest(".vhead");
+  if (head) { seekViolation(Number(head.dataset.i), false); return; }
+  const card = e.target.closest(".viol");
+  if (card && !e.target.closest("a, button, input")) {
+    const sel = window.getSelection && String(window.getSelection());
+    if (!sel) seekViolation(Number(card.dataset.i), false);
+  }
+});
+const hasFiles = (e) => !!(e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") !== -1);
+["dragenter", "dragover"].forEach((ev) => window.addEventListener(ev, (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = busy() ? "none" : "copy";
+  if (!busy()) $("drop").classList.add("over");
+}));
+window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("drop").classList.remove("over"); });
+window.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  $("drop").classList.remove("over");
+  if (!busy() && e.dataTransfer.files.length) chooseFile(e.dataTransfer.files[0]);
+});
+
+/* ---------- start ---------- */
+renderKey(false);
+(function init() {
+  const jobParam = params.get("job");
+  const last = readLast();
+  if (jobParam && ID_RE.test(jobParam)) { openJob(jobParam, last && last.id === jobParam ? last.t0 : 0); return; }
+  if (jobParam) { setUrl(null); intakeMsg("Некорректная ссылка на результат", "Проверьте ссылку или загрузите видео заново."); }
+  else if (last && last.status === "processing") { openJob(last.id, last.t0, true); return; }
+  refreshLast();
+})();
 </script>
 </body>
 </html>

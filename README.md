@@ -80,6 +80,8 @@ curl "$URL/api/v1/jobs/<job_id>" -H "X-API-Key: $API_KEY"
 
 > **Проверка на Windows-ноутбуке с 4–8 ГБ видеопамяти** (меньшая модель через Ollama): см. [docs/windows_laptop.md](docs/windows_laptop.md).
 
+**Запуск одной командой:** Windows — двойной щелчок по `start.bat`, macOS/Linux — `./start.sh` (окружение, зависимости, Ollama и модель настраиваются сами; `demo` — режим без модели), см. [docs/windows_laptop.md](docs/windows_laptop.md#быстрый-запуск).
+
 Целевая платформа — Linux-хост с GPU (планируется RTX 3090 24 ГБ). Скрипты развёртывания **запланированы** (`deploy/setup.sh`, `deploy/start.sh`); на момент написания этого README каталог `deploy/` пуст, скрипты создаются на GPU-хосте. ⏳ уточнить команды после проверки скриптов на хосте.
 
 | Шаг | Что делает | Статус |
