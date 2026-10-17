@@ -223,9 +223,8 @@
     - {q: "Is the client absent while money is being counted?", window: [0, 4], zone: full}
 - id: R14
   type: "Документ клиента на видео не зафиксирован"
-  enabled: false   # false alarms on clean X-3, X-39 and test clips; the ID fact also fires on the only positive (X-2)
   summary: "Клиент передаёт наличные, а предъявление удостоверения личности на видео не зафиксировано."
-  signals: "Интервал F_handover при посетителе у стола, и в окне от −60 до +30 с нет F_id_card; вопрос S7 «видно ли удостоверение за 20 с» работает как вето."
+  signals: "Первая передача за визит клиента (F_handover при посетителе у стола), и в окне от −60 до +30 с нет F_id_card (карта, паспорт или телефон с цифровым документом); два вопроса S7 по клипам до и после передачи работают как вето."
   family: handover_without_id
   facts: [F_handover]
   params: {lookback_s: 60.0, lookahead_s: 30.0, strong_k: 99}
@@ -235,7 +234,8 @@
   template: "В {t} с клиент передаёт наличные; предъявление документа, удостоверяющего личность, на видео не зафиксировано."
   verify:
     - {q: "Is a client handing money to the cashier across the desk?", window: [-1, 2], zone: full}
-    - {q: "Is an ID card or identity document visible on the desk or in someone's hand?", window: [-20, 2], zone: full, expect: "no"}
+    - {q: "Does the client show or hand an ID card, a passport or a phone with a digital document to the cashier in any of these frames?", window: [-20, 0], zone: full, expect: "no", required: true}
+    - {q: "Does the client show or hand an ID card, a passport or a phone with a digital document to the cashier in any of these frames?", window: [0, 15], zone: full, expect: "no", required: true}
 - id: R15
   type: "Сумка инкассации принята без видимой проверки"
   summary: "Инкассатор оставляет сумку и уходит за несколько секунд; проверка целостности сумки и пломбы при нём не видна."

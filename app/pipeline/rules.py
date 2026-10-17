@@ -245,13 +245,21 @@ def count_after_client_left(rule: Rule, ctx: RuleContext) -> list[Candidate]:
 
 
 def handover_without_id(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """First handover of each client visit with no ID (card, passport or a phone with a digital document, A п. 19 пп. 1)
+    seen from lookback_s before to lookahead_s after it. One candidate per visit: the ID is shown once, before or
+    right after the first deposit, so later handovers of the same visit are not checked again."""
     look, ahead = rule.params.get("lookback_s", 20.0), rule.params.get("lookahead_s", 3.0)
     ids = ctx.states.get("F_id_card", [])
-    out = []
+    visits = sorted(e.t for e in ctx.people.events if e.kind in ("entered", "exited"))
+    out, done = [], set()
     for f in rule.facts:
-        for iv in ctx.states.get(f, []):
+        for iv in sorted(ctx.states.get(f, []), key=lambda x: x.start):
             if ctx.people.others_at(iv.start) == 0:
                 continue                               # no client at the handover -> nothing to identify
+            visit = sum(1 for v in visits if v <= iv.start)  # visitor events before it = which visit this is
+            if visit in done:
+                continue
+            done.add(visit)
             if not any(x.end >= iv.start - look and x.start <= iv.end + ahead for x in ids):  # ID may follow the money
                 out.append(_cand(rule, f, iv, iv.start))
     return out

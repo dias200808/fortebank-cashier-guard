@@ -36,7 +36,7 @@
   question: "Is the cashier counting banknotes by hand or feeding them into the banknote counting machine?"
 - id: F_id_card
   zone: desk
-  question: "Is an ID card or identity document being shown or lying on the desk?"
+  question: "Is an ID card, a passport or a phone screen with a digital ID being shown to the cashier or lying on the desk?"
 - id: F_cash_from_client
   zone: full
   question: "Is a client handing banknotes (paper money, not a document, form or ID card) to the cashier across the desk?"

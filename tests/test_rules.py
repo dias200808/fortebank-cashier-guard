@@ -216,3 +216,10 @@ def test_r14_id_shown_after_the_money_counts():
     p = people([], others=lambda t: 1)
     assert evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(12.0, 13.0)], "F_id_card": [iv(16.0, 17.5)]})) == []
     assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(12.0, 13.0)]}))] == [12.0]
+
+
+def test_r14_checks_only_the_first_handover_of_each_visit():
+    p = people([], others=lambda t: 1)
+    assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(8.0, 9.0), iv(20.0, 21.0)]}))] == [8.0]
+    p = people([Event(15.0, "exited", 2), Event(17.0, "entered", 3)], others=lambda t: 1)
+    assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(8.0, 9.0), iv(20.0, 21.0)]}))] == [8.0, 20.0]
