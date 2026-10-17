@@ -200,6 +200,10 @@ def test_r02_safe_left_open_while_cashier_back_at_desk():
     c = ctx(people([]), {"F_safe_open": [iv(10.0, 14.0)], "F_safe_attended": [iv(9.0, 15.0)]},
             series={"F_safe_open": _series(10.0, 14.0)})
     assert evaluate([RULES["R02"]], c) == []
+    # X-39: the cashier reaches into the open safe from her chair (touching, not standing)
+    c = ctx(people([]), {"F_safe_open": [iv(30.0, 34.0)], "F_safe_attended": [], "F_safe_touched": [iv(29.0, 37.0)]},
+            series={"F_safe_open": _series(30.0, 34.0)})
+    assert evaluate([RULES["R02"]], c) == []
 
 
 def test_r12_cup_from_first_second_needs_drinking():

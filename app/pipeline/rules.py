@@ -164,9 +164,10 @@ def presence(rule: Rule, ctx: RuleContext) -> list[Candidate]:
 
 def state_left_unattended(rule: Rule, ctx: RuleContext) -> list[Candidate]:
     """The state holds while nobody stands at it for min_s: the cashier opened the safe, went back to the desk and left
-    it open (X-20). Unlike unattended_state the cashier may still be in the room; normal use of the safe keeps
-    attend_fact (a person right next to it) on for the whole time it is open."""
-    att = ctx.states.get(rule.params.get("attend_fact", ""), [])
+    it open (X-20). Unlike unattended_state the cashier may still be in the room; normal use of the safe keeps one of
+    the attend_fact facts (standing next to it / touching or reaching into it, even from the chair as in X-39) on."""
+    names = rule.params.get("attend_fact", [])
+    att = [a for n in ([names] if isinstance(names, str) else names) for a in ctx.states.get(n, [])]
     min_s = rule.params.get("min_s", 3.0)
     out = []
     for f in rule.facts:

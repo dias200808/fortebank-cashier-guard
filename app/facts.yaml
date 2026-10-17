@@ -46,6 +46,9 @@
 - id: F_safe_attended
   zone: full
   question: "Is a person standing right next to the safe?"
+- id: F_safe_touched
+  zone: full
+  question: "Is someone touching the safe, holding its door or reaching into it?"
 - id: F_drinking
   zone: full
   question: "Is a person drinking from a cup, mug or bottle, holding it at the mouth?"
