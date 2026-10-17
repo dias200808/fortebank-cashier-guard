@@ -16,9 +16,9 @@
     - {q: "Is the cashier's chair empty while money remains on the desk?", window: [1, 6], zone: full}
 - id: R02
   type: "Сейф оставлен открытым без присмотра"
-  family: [on_cashier_left, unattended_state]
+  family: [on_cashier_left, unattended_state, state_left_unattended]
   facts: [F_safe_open]
-  params: {tol: 1.5, min_s: 3.0, strong_k: 3}
+  params: {tol: 1.5, min_s: 3.0, strong_k: 3, attend_fact: F_safe_attended}
   strength: "В"
   norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 20 ч. 2, п. 80", url: "https://adilet.zan.kz/rus/docs/V1900019680",
          quote: "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте кассового работника, закрывающихся на ключ; … определяется внутренними документами банка, обеспечивающими исключение их несанкционированного использования"}
@@ -131,7 +131,7 @@
   type: "Еда или напитки на рабочем месте"
   family: presence
   facts: [F_cup]
-  params: {min_s: 2.0, strong_k: 3}
+  params: {min_s: 2.0, strong_k: 3, start_needs: F_drinking}
   strength: "Н"
   norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 12 (перечень разрешённых к вносу предметов)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
          quote: "Допускается внос … лекарственных средств, медицинских изделий и средств связи …"}
@@ -180,7 +180,7 @@
   type: "Документ клиента на видео не зафиксирован"
   family: handover_without_id
   facts: [F_handover]
-  params: {lookback_s: 60.0, strong_k: 99}
+  params: {lookback_s: 60.0, lookahead_s: 30.0, strong_k: 99}
   strength: "С"
   norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 19 пп. 1)", url: "https://adilet.zan.kz/rus/docs/V1900019680",
          quote: "проводит визуальную идентификацию клиента, вносящего наличные деньги, с документом, удостоверяющим его личность"}

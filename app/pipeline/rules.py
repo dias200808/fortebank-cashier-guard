@@ -154,9 +154,33 @@ def duration(rule: Rule, ctx: RuleContext) -> list[Candidate]:
 
 
 def presence(rule: Rule, ctx: RuleContext) -> list[Candidate]:
-    min_s = rule.params.get("min_s", 2.0)
+    """An object visible from the first second may be furniture the model mistakes for it (teal boxes taken for cups
+    in X-25): then the start_needs fact (e.g. someone drinking) must be seen somewhere in the video."""
+    min_s, need = rule.params.get("min_s", 2.0), rule.params.get("start_needs")
     return [_post_cand(rule, ctx, f, iv.start, iv.start, iv.end)
-            for f in rule.facts for iv in ctx.states.get(f, []) if iv.length >= min_s]
+            for f in rule.facts for iv in ctx.states.get(f, [])
+            if iv.length >= min_s and (not need or iv.start > 1.0 or ctx.states.get(need))]
+
+
+def state_left_unattended(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """The state holds while nobody stands at it for min_s: the cashier opened the safe, went back to the desk and left
+    it open (X-20). Unlike unattended_state the cashier may still be in the room; normal use of the safe keeps
+    attend_fact (a person right next to it) on for the whole time it is open."""
+    att = ctx.states.get(rule.params.get("attend_fact", ""), [])
+    min_s = rule.params.get("min_s", 3.0)
+    out = []
+    for f in rule.facts:
+        for iv in ctx.states.get(f, []):
+            run: list[float] = []
+            for t in [x for x, _ in ctx.series.get(f, []) if iv.start <= x <= iv.end] + [None]:
+                if t is not None and not any(a.start <= t <= a.end for a in att):
+                    run.append(t)
+                    continue
+                if run and run[-1] - run[0] >= min_s:
+                    out.append(_post_cand(rule, ctx, f, run[0], run[0], iv.end))
+                    break
+                run = []
+    return out
 
 
 def quality(rule: Rule, ctx: RuleContext) -> list[Candidate]:
@@ -193,14 +217,14 @@ def count_after_client_left(rule: Rule, ctx: RuleContext) -> list[Candidate]:
 
 
 def handover_without_id(rule: Rule, ctx: RuleContext) -> list[Candidate]:
-    look = rule.params.get("lookback_s", 20.0)
+    look, ahead = rule.params.get("lookback_s", 20.0), rule.params.get("lookahead_s", 3.0)
     ids = ctx.states.get("F_id_card", [])
     out = []
     for f in rule.facts:
         for iv in ctx.states.get(f, []):
             if ctx.people.others_at(iv.start) == 0:
                 continue                               # no client at the handover -> nothing to identify
-            if not any(x.end >= iv.start - look and x.start <= iv.end + 3.0 for x in ids):
+            if not any(x.end >= iv.start - look and x.start <= iv.end + ahead for x in ids):  # ID may follow the money
                 out.append(_cand(rule, f, iv, iv.start))
     return out
 
@@ -283,6 +307,7 @@ FAMILIES.update({
     "collector_quick_leave": collector_quick_leave,
     "return_after_count": return_after_count,
     "door_left_open": door_left_open,
+    "state_left_unattended": state_left_unattended,
 })
 
 

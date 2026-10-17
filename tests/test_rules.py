@@ -185,3 +185,30 @@ def test_r18_fires_when_covered_from_start_and_cashier_seen_later():
     p = PeopleTimeline(T, 1, [t < 9.0 for t in T], [0] * len(T), [])
     q = [(t, 5.0 if t < 8.0 else 120.0, 50.0) for t in T]
     assert [x.t for x in evaluate([RULES["R18"]], ctx(p, quality=q))] == [0.0]
+
+
+def _series(a, b, step=0.5):
+    return [(round(i * step, 2), 0.9 if a <= i * step <= b else 0.05) for i in range(int(30 / step) + 1)]
+
+
+def test_r02_safe_left_open_while_cashier_back_at_desk():
+    # X-20: safe opened at 2 s, cashier stands at it until 3.5 s, then sits at the desk; the safe stays open
+    c = ctx(people([]), {"F_safe_open": [iv(2.0, 29.0)], "F_safe_attended": [iv(0.0, 3.5)]},
+            series={"F_safe_open": _series(2.0, 29.0)})
+    assert [x.t for x in evaluate([RULES["R02"]], c)] == [4.0]
+    # normal use: somebody stands at the safe the whole time it is open
+    c = ctx(people([]), {"F_safe_open": [iv(10.0, 14.0)], "F_safe_attended": [iv(9.0, 15.0)]},
+            series={"F_safe_open": _series(10.0, 14.0)})
+    assert evaluate([RULES["R02"]], c) == []
+
+
+def test_r12_cup_from_first_second_needs_drinking():
+    assert evaluate([RULES["R12"]], ctx(people([]), {"F_cup": [iv(0.0, 20.0)]})) == []
+    assert [x.t for x in evaluate([RULES["R12"]], ctx(people([]), {"F_cup": [iv(0.0, 20.0)], "F_drinking": [iv(8.0, 9.0)]}))] == [0.0]
+    assert [x.t for x in evaluate([RULES["R12"]], ctx(people([]), {"F_cup": [iv(11.0, 20.0)]}))] == [11.0]
+
+
+def test_r14_id_shown_after_the_money_counts():
+    p = people([], others=lambda t: 1)
+    assert evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(12.0, 13.0)], "F_id_card": [iv(16.0, 17.5)]})) == []
+    assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(12.0, 13.0)]}))] == [12.0]
