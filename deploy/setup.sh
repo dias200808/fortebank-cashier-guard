@@ -25,7 +25,8 @@ fi
 
 # Model choice by VRAM (override with VLM_MODEL=... bash deploy/setup.sh)
 if [ -z "${VLM_MODEL:-}" ]; then
-  if   [ "$VRAM_MB" -ge 22000 ]; then VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct-FP8"; FALLBACK="Qwen/Qwen3-VL-8B-Instruct"
+  # Qwen3.5-9B (FP8 weights, Marlin on Ampere): A/B on 19 dataset videos found as much or more than Qwen3-VL-8B
+  if   [ "$VRAM_MB" -ge 22000 ]; then VLM_MODEL="RedHatAI/Qwen3.5-9B-FP8-dynamic"; FALLBACK="Qwen/Qwen3-VL-8B-Instruct-FP8"
   elif [ "$VRAM_MB" -ge 11000 ]; then VLM_MODEL="Qwen/Qwen3-VL-4B-Instruct";     FALLBACK=""
   else                                VLM_MODEL="Qwen/Qwen3-VL-2B-Instruct";     FALLBACK=""
   fi
@@ -74,7 +75,7 @@ fi
 GPU_UTIL=0.80; MAX_LEN=16384; OBJ=off
 case "$VLM_MODEL" in
   *8B-Instruct) GPU_UTIL=0.86; MAX_LEN=8192;;
-  *8B-Instruct-FP8) if [ "$OWL_OK" = 1 ]; then GPU_UTIL=0.72; OBJ=owlv2; fi;;
+  *8B-Instruct-FP8|*Qwen3.5-9B-FP8*) if [ "$OWL_OK" = 1 ]; then GPU_UTIL=0.72; OBJ=owlv2; fi;;
 esac
 
 if [ -f "$ENV_FILE" ] && grep -q '^API_KEY=' "$ENV_FILE"; then
@@ -90,6 +91,7 @@ cat > "$ENV_FILE" <<EOF
 VLM_MODEL=$VLM_MODEL
 VLM_GPU_UTIL=$GPU_UTIL
 VLM_MAX_LEN=$MAX_LEN
+VLM_EXTRA_ARGS="$( case "$VLM_MODEL" in *Qwen3.5*) echo --no-enable-prefix-caching;; esac )"
 VLM_COORD_MODE=rel1000
 API_KEY=$API_KEY
 PORT=$APP_PORT
