@@ -1,16 +1,17 @@
+from dataclasses import replace
 from pathlib import Path
 
 from app.pipeline.people import Event, PeopleTimeline
 from app.pipeline.rules import RuleContext, evaluate, load_rules
 from app.pipeline.timeline import Interval
 
-T = [round(i * 0.2, 3) for i in range(150)]
 RULES = {r.id: r for r in load_rules(Path("app/rules.yaml"))}
 
 
-def ctx(events, states, others=lambda t: 0):
-    p = PeopleTimeline(T, 1, [False] * len(T), [others(t) for t in T], events)
-    return RuleContext(p, states, {}, [(t, 120.0, 50.0) for t in T], 30.0)
+def ctx(events, states, others=lambda t: 0, series=None, dur=30.0):
+    times = [round(i * 0.2, 3) for i in range(int(dur * 5))]
+    p = PeopleTimeline(times, 1, [False] * len(times), [others(t) for t in times], events)
+    return RuleContext(p, states, series or {}, [(t, 120.0, 50.0) for t in times], dur)
 
 
 def iv(a, b):
@@ -67,3 +68,84 @@ def test_r15_not_for_a_long_visit():
 def test_tier2_candidates_are_never_strong():
     c = evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(10.0, 11.0)]}, others=lambda t: 1))
     assert c and not any(x.strong for x in c)
+
+
+R20_STATES = {"F_cash_from_client": [iv(5.0, 8.0)], "F_counting": [iv(9.0, 18.0)], "F_cash_to_client": [iv(20.0, 22.0)]}
+PRESENT = lambda t: 1
+
+
+def r20(states, events=(), others=PRESENT, **kw):
+    return [x.t for x in evaluate([RULES["R20"]], ctx(list(events), states, others=others, **kw))]
+
+
+def test_r20_part_of_counted_deposit_goes_back_to_client():
+    c = evaluate([RULES["R20"]], ctx([], R20_STATES, others=PRESENT))
+    assert [x.t for x in c] == [20.0]
+    assert c[0].fact == "F_cash_to_client" and not c[0].strong
+
+
+def test_r20_not_for_a_withdrawal_without_deposit():
+    assert r20({"F_counting": [iv(9.0, 18.0)], "F_cash_to_client": [iv(20.0, 22.0)]}) == []
+
+
+def test_r20_not_when_client_already_left():
+    assert r20(R20_STATES, others=lambda t: 1 if t < 19.0 else 0) == []
+
+
+def test_r20_not_when_money_goes_out_long_after_counting():
+    assert r20(dict(R20_STATES, F_cash_to_client=[iv(58.0, 59.0)]), dur=60.0) == []
+
+
+def test_r20_not_when_counting_starts_long_after_deposit():
+    states = {"F_cash_from_client": [iv(2.0, 4.0)], "F_counting": [iv(36.0, 45.0)], "F_cash_to_client": [iv(48.0, 50.0)]}
+    assert r20(states, dur=60.0) == []
+
+
+def test_r20_not_when_cashier_left_between_deposit_and_return():
+    assert r20(R20_STATES, events=[Event(19.0, "cashier_left", 1)]) == []
+
+
+def test_r20_not_for_a_mirror_answer_during_the_deposit_handover():
+    states = {"F_cash_from_client": [iv(5.0, 8.0)], "F_counting": [iv(6.0, 18.0)], "F_cash_to_client": [iv(7.0, 8.0)]}
+    assert r20(states) == []
+
+
+def test_r20_not_for_a_return_before_counting_got_going():
+    states = {"F_cash_from_client": [iv(5.0, 8.0)], "F_counting": [iv(12.0, 20.0)], "F_cash_to_client": [iv(10.0, 11.0)]}
+    assert r20(states) == []
+    assert r20(dict(states, F_cash_to_client=[iv(13.0, 14.0)])) == []        # < min_count_s of counting
+
+
+def test_r20_not_for_the_next_client_withdrawal():
+    """Client A deposits and leaves; client B arrives and is paid out (X-5 has an exit at 60.6 and an entry at 62.0)."""
+    states = {"F_cash_from_client": [iv(2.0, 4.0)], "F_counting": [iv(5.0, 10.0), iv(16.0, 22.0)],
+              "F_cash_to_client": [iv(24.0, 25.0)]}
+    events = [Event(11.0, "exited", 2), Event(14.0, "entered", 3)]
+    assert r20(states, events=events, others=lambda t: 0 if 11.0 <= t < 14.0 else 1) == []
+    assert r20(states, events=events[1:]) == []                              # B joins before A has left
+
+
+def test_r20_counting_may_start_just_before_the_deposit_interval():
+    states = {"F_cash_from_client": [iv(5.0, 8.0)], "F_counting": [iv(4.5, 18.0)], "F_cash_to_client": [iv(20.0, 22.0)]}
+    assert r20(states) == [20.0]
+    assert r20(dict(states, F_counting=[iv(2.0, 18.0)])) == []               # counting began well before: not this deposit
+
+
+def test_r20_falls_through_to_a_later_counting_of_the_same_client():
+    states = {"F_cash_from_client": [iv(5.0, 8.0)], "F_counting": [iv(9.0, 12.0), iv(14.0, 20.0)],
+              "F_cash_to_client": [iv(38.0, 39.0)]}
+    assert r20(states, dur=60.0) == [38.0]
+
+
+def test_r20_every_return_after_count_is_a_candidate():
+    """An early to-client blip (rejected by S7) must not hide the real return (X-1: 22.4 s)."""
+    states = dict(R20_STATES, F_cash_to_client=[iv(12.0, 13.0), iv(22.4, 24.0)])
+    assert r20(states) == [12.0, 22.4]
+
+
+def test_r20_is_never_strong_even_with_a_confident_series():
+    series = {"F_cash_to_client": [(float(t), 0.95) for t in range(15, 30)]}
+    c = evaluate([RULES["R20"]], ctx([], R20_STATES, others=PRESENT, series=series))
+    assert [x.t for x in c] == [20.0] and c[0].score == 0.95 and not c[0].strong
+    weak_k = replace(RULES["R20"], params=dict(RULES["R20"].params, strong_k=3))
+    assert evaluate([weak_k], ctx([], R20_STATES, others=PRESENT, series=series))[0].strong   # strong_k: 99 is what blocks it

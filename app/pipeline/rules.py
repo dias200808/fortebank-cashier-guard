@@ -218,6 +218,32 @@ def collector_quick_leave(rule: Rule, ctx: RuleContext) -> list[Candidate]:
     return out
 
 
+def return_after_count(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """Deposit -> counting -> part of the money goes back across the desk to the same, still-present client (X-1).
+    Withdrawals (count, then pay out) have no preceding deposit and are not matched. The return must start after
+    the deposit handover (the mirror to-client question can fire on the client's own handover) and after some
+    counting; any visitor entry/exit in between means another client (two operations in a row). Every matching
+    return is a candidate, so an S7 rejection of an early blip cannot hide the real return."""
+    p = rule.params
+    lead, count_within = p.get("count_lead_s", 2.0), p.get("count_within_s", 30.0)
+    gap, min_count, return_within = p.get("after_deposit_s", 1.0), p.get("min_count_s", 3.0), p.get("return_within_s", 20.0)
+    left = [e.t for e in ctx.people.events if e.kind == "cashier_left"]
+    visits = [e.t for e in ctx.people.events if e.kind in ("entered", "exited")]
+    counts, returns = ctx.states.get("F_counting", []), ctx.states.get("F_cash_to_client", [])
+    hits: set[float] = set()
+    for d in ctx.states.get("F_cash_from_client", []):
+        for c in counts:
+            if not (d.start - lead <= c.start <= d.end + count_within and c.end > d.end):
+                continue                               # counting must belong to this deposit and outlast the handover
+            for r in returns:
+                if (max(d.end + gap, c.start + min_count) <= r.start <= c.end + return_within
+                        and ctx.people.others_at(r.start) > 0                  # client still at the desk
+                        and not any(d.start <= t <= r.start for t in left)     # cashier stayed
+                        and not any(d.start < t <= r.start for t in visits)):  # same client throughout
+                    hits.add(r.start)
+    return [_post_cand(rule, ctx, "F_cash_to_client", t, t, t + 3.0) for t in sorted(hits)]
+
+
 FAMILIES: dict[str, Callable[[Rule, RuleContext], list[Candidate]]] = {
     "on_cashier_left": on_cashier_left,
     "unattended_state": unattended_state,
@@ -232,6 +258,7 @@ FAMILIES.update({
     "count_after_client_left": count_after_client_left,
     "handover_without_id": handover_without_id,
     "collector_quick_leave": collector_quick_leave,
+    "return_after_count": return_after_count,
 })
 
 

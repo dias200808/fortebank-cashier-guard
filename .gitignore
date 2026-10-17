@@ -13,3 +13,10 @@ __pycache__/
 # tooling
 .gstack/
 .superpowers/
+
+# deploy runtime
+deploy/.env
+deploy/logs/
+deploy/run/
+deploy/bin/
+.venv-vllm/

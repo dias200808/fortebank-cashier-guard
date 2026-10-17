@@ -204,3 +204,15 @@
   verify:
     - {q: "Did a person put a bag on the desk and walk away?", window: [-2, 3], zone: full}
     - {q: "Is the cashier inspecting the bag's seal or exchanging papers with the visitor?", window: [-2, 3], zone: full, expect: "no"}
+- id: R20
+  type: "Возврат части принятых наличных клиенту после пересчёта"
+  family: return_after_count
+  facts: [F_cash_from_client, F_counting, F_cash_to_client]
+  params: {count_lead_s: 2.0, count_within_s: 30.0, after_deposit_s: 1.0, min_count_s: 3.0, return_within_s: 20.0, strong_k: 99}
+  strength: "Н"
+  norm: {act: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в БВУ… (пост. Правления НБРК от 29.11.2019 № 231)", point: "п. 31 пп. 3)–4); п. 34", url: "https://adilet.zan.kz/rus/docs/V1900019680",
+         quote: "подготавливает сумму наличных денег, подлежащую выдаче"}
+  template: "В {t} с после пересчёта принятых наличных кассир передаёт часть пересчитанных денег обратно клиенту (кадр {te} с); основание возврата на видео не зафиксировано."
+  verify:
+    - {q: "Is the cashier giving part of a stack of counted banknotes back to the client?", window: [-2, 3], zone: full}
+    - {q: "Did the cashier take banknotes out of the safe or a desk drawer (not from the counting machine)?", window: [-20, -1], zone: full, expect: "no"}

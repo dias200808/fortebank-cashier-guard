@@ -37,3 +37,9 @@
 - id: F_id_card
   zone: desk
   question: "Is an ID card or identity document being shown or lying on the desk?"
+- id: F_cash_from_client
+  zone: full
+  question: "Is a client handing banknotes (paper money, not a document, form or ID card) to the cashier across the desk?"
+- id: F_cash_to_client
+  zone: full
+  question: "Is the cashier handing banknotes (paper money, not a receipt, document or ID card) to the client across the desk?"
