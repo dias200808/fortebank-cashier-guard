@@ -53,6 +53,7 @@ bash deploy/smoke.sh путь/к/видео.mov https://<адрес>   # сво�
 bash deploy/status.sh            # что работает, очередь, адрес, память GPU, последние логи
 bash deploy/stop.sh              # остановить всё
 bash deploy/stop.sh keep-tunnel  # остановить сервис и модель, публичный адрес оставить
+bash deploy/update.sh /путь/к/fortebank-cashier-guard.tar.gz   # новая версия кода: перезапуск только сервиса, модель и адрес не трогаются
 ```
 
 Логи: `deploy/logs/vllm.log`, `deploy/logs/app.log`, `deploy/logs/tunnel.log`.

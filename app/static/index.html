@@ -124,6 +124,12 @@
   video { display: block; width: 100%; height: auto; aspect-ratio: auto 464 / 848; background: #000; border-radius: 10px; }
   .work.wide video { aspect-ratio: auto 16 / 9; }
 
+  /* region box: where the violation is (video overlay, evidence thumbnails, lightbox) */
+  .vwrap, .lb-pic { position: relative; }
+  .rbox { position: absolute; border: 2px solid var(--ink); outline: 1px solid var(--paper); border-radius: 3px; pointer-events: none; }
+  .rbox b { position: absolute; left: -2px; top: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 2px 0 3px 0; background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+  .fthumb .rbox b { min-width: 15px; height: 15px; padding: 0 3px; font-size: 10px; line-height: 15px; }
+
   /* timeline with violation markers */
   .tl { position: relative; height: 22px; margin-top: 4px; touch-action: manipulation; }
   .tl.has { height: 48px; margin-top: 8px; }
@@ -192,7 +198,7 @@
   .vweak { display: inline-block; margin-top: 8px; padding: 1px 9px; border: 1px dashed var(--ink-3); border-radius: 999px; color: var(--ink-2); font-size: 13px; }
   .frames { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
   .frame { position: relative; margin: 0; }
-  .fthumb { display: block; padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; }
+  .fthumb { position: relative; display: block; padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; }
   .fthumb img { display: block; height: 150px; width: auto; min-width: 80px; max-width: 260px; object-fit: cover; border: 1px solid var(--rule); border-radius: 7px; background: #000; }
   .fthumb:hover img { border-color: var(--ink); }
   .frame figcaption { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -267,7 +273,10 @@
 
   <div class="work" id="work" hidden>
     <section class="player" id="player" aria-label="Видео">
-      <video id="vid" controls playsinline preload="metadata"></video>
+      <div class="vwrap">
+        <video id="vid" controls playsinline preload="metadata"></video>
+        <div class="rbox" id="vbox" hidden aria-hidden="true"><b></b></div>
+      </div>
       <div class="tl" id="tl" role="group" aria-label="Отметки нарушений на шкале времени">
         <div class="tl-track" aria-hidden="true"><div class="tl-fill" id="tlFill"></div></div>
         <div id="tlMarks"></div>
@@ -286,7 +295,7 @@
 
 <dialog class="lb" id="lb" aria-labelledby="lbCap">
   <div class="lb-in">
-    <img id="lbImg" alt="">
+    <div class="lb-pic"><img id="lbImg" alt=""><span class="rbox" id="lbBox" hidden aria-hidden="true"><b></b></span></div>
     <div class="lb-bar">
       <p class="lb-cap" id="lbCap"></p>
       <div class="lb-actions">
@@ -416,7 +425,7 @@ function setVideo(src) {
   if (src) { vid.src = src; } else { vid.removeAttribute("src"); try { vid.load(); } catch (e) {} }
   $("tdur").textContent = "--:--";
   $("tl").classList.remove("seekable");
-  renderMarks(); updateTime();
+  renderMarks(); updateTime(); placeBox();
 }
 function onMeta() {
   const d = vid.duration;
@@ -424,11 +433,13 @@ function onMeta() {
   $("tdur").textContent = S.duration ? fmt(S.duration) : "--:--";
   $("tl").classList.toggle("seekable", !!S.duration);
   if (vid.videoWidth && vid.videoHeight) $("work").classList.toggle("wide", vid.videoWidth > vid.videoHeight);
-  renderMarks(); updateTime();
+  renderMarks(); updateTime(); placeBox();
 }
 vid.addEventListener("loadedmetadata", onMeta);
 vid.addEventListener("durationchange", onMeta);
 vid.addEventListener("loadeddata", () => { $("vnote").hidden = true; });
+vid.addEventListener("emptied", placeBox);
+if (window.ResizeObserver) new ResizeObserver(() => placeBox()).observe(vid); else window.addEventListener("resize", placeBox);
 vid.addEventListener("error", () => {
   if (!vid.getAttribute("src")) return;
   $("vnote").textContent = S.objUrl
@@ -462,7 +473,7 @@ function renderMarks() {
     if (row) two = true;
     const label = "Нарушение " + (i + 1) + ": " + v.type + ", " + fmt(v.t);
     return '<button type="button" class="mk' + (i === S.active ? " on" : "") + '" data-i="' + i + '" data-row="' + row +
-      '" style="left:clamp(13px,' + pct.toFixed(3) + '%,calc(100% - 13px))" aria-label="' + esc(label) + '"><span>' + (i + 1) + "</span></button>";
+      '" style="left:clamp(13px,' + pct.toFixed(3) + '%,calc(100% - 13px))" aria-label="' + esc(label) + '" title="' + esc(label) + '"><span>' + (i + 1) + "</span></button>";
   }).join("");
   $("tl").classList.add("has");
   $("tl").classList.toggle("two", two);
@@ -482,6 +493,23 @@ function setActive(i) {
     c.classList.toggle("on", on);
     if (on) c.setAttribute("aria-current", "time"); else c.removeAttribute("aria-current");
   });
+  placeBox();
+}
+function placeRect(el, r, x, y, w, h) {
+  el.style.left = (x + r[0] * w).toFixed(1) + "px";
+  el.style.top = (y + r[1] * h).toFixed(1) + "px";
+  el.style.width = ((r[2] - r[0]) * w).toFixed(1) + "px";
+  el.style.height = ((r[3] - r[1]) * h).toFixed(1) + "px";
+}
+function placeBox() {
+  // region of the active violation over the picture actually drawn: the element may letterbox it (contain)
+  const box = $("vbox"), v = S.violations[S.active], r = v && v.region;
+  const vw = vid.videoWidth, vh = vid.videoHeight, ew = vid.clientWidth, eh = vid.clientHeight;
+  if (!r || !vw || !vh || !ew || !eh || !vid.getAttribute("src")) { box.hidden = true; return; }
+  const k = Math.min(ew / vw, eh / vh), pw = vw * k, ph = vh * k;
+  placeRect(box, r, vid.offsetLeft + (ew - pw) / 2, vid.offsetTop + (eh - ph) / 2, pw, ph);
+  box.firstElementChild.textContent = String(S.active + 1);
+  box.hidden = false;
 }
 function playFrom(t, mode) {
   if (!vid.getAttribute("src")) return;
@@ -614,6 +642,7 @@ function normViolations(list) {
       img: f && typeof f.image_base64 === "string" && B64_RE.test(f.image_base64) ? f.image_base64 : null,
     })).filter((f) => f.img);
     const r = v.rule && typeof v.rule === "object" ? v.rule : null;
+    const g = Array.isArray(v.region) && v.region.length === 4 ? v.region.map((x) => Math.min(1, Math.max(0, Number(x)))) : null;
     const t = num(v.timecode_sec);
     const ts = [t].concat(frames.map((f) => f.t));
     return {
@@ -621,12 +650,15 @@ function normViolations(list) {
       t,
       desc: v.description == null ? "" : String(v.description),
       frames,
+      region: g && g.every(Number.isFinite) && g[2] - g[0] > 0.005 && g[3] - g[1] > 0.005 ? g : null,
       rule: r ? { act: r.act == null ? "" : String(r.act), point: r.point == null ? "" : String(r.point), strength: String(r.strength == null ? "" : r.strength), url: safeUrl(r.url) } : null,
       w0: Math.min.apply(null, ts) - 1.2,
       w1: Math.max.apply(null, ts) + 2,
     };
   }).sort((a, b) => a.t - b.t);
 }
+const pctBox = (r) => "left:" + (r[0] * 100).toFixed(2) + "%;top:" + (r[1] * 100).toFixed(2) + "%;width:" +
+  ((r[2] - r[0]) * 100).toFixed(2) + "%;height:" + ((r[3] - r[1]) * 100).toFixed(2) + "%";
 function violHtml(v, i) {
   let norm = "";
   const r = v.rule;
@@ -639,7 +671,8 @@ function violHtml(v, i) {
   const frames = v.frames.map((f, j) => {
     const tc = fmt(f.t);
     return '<li><figure class="frame"><button type="button" class="fthumb" data-i="' + i + '" data-j="' + j + '" aria-label="Показать в видео кадр ' + tc + '">' +
-      '<img src="data:image/jpeg;base64,' + f.img + '" alt="Кадр ' + tc + ": " + esc(v.type) + '" decoding="async"></button>' +
+      '<img src="data:image/jpeg;base64,' + f.img + '" alt="Кадр ' + tc + ": " + esc(v.type) + '" decoding="async">' +
+      (v.region ? '<span class="rbox" style="' + pctBox(v.region) + '" aria-hidden="true"><b>' + (i + 1) + "</b></span>" : "") + "</button>" +
       '<figcaption><span>' + tc + '</span><button type="button" class="fzoom" data-i="' + i + '" data-j="' + j + '" aria-label="Увеличить кадр ' + tc + '" title="Увеличить">' + ICON_ZOOM + "</button></figcaption></figure></li>";
   }).join("");
   const headLabel = "Нарушение " + (i + 1) + ": " + v.type + ", " + fmt(v.t) + ". Смотреть в видео";
@@ -668,13 +701,14 @@ function renderDone(d) {
   stage.innerHTML = '<div class="appear"><div class="verdict ' + (bad ? "bad" : "ok") + '"><span class="vsym" aria-hidden="true"></span>' +
     '<div><h2 id="vh" tabindex="-1">' + title + '</h2>' + (demo ? '<p class="vdemo">' + DEMO + "</p>" : "") + '</div><p class="vsub">' + esc(sub) + "</p></div>" +
     '<p class="disclaimer">Результат — подсказка для проверяющего, а не юридическое заключение.</p>' +
-    (n ? '<p class="lead">Нажмите на нарушение или отметку на шкале: видео перейдёт к этому моменту.</p><ol class="viols">' + vs.map(violHtml).join("") + "</ol>" : "") +
+    (n ? '<p class="lead">Нажмите на нарушение или отметку на шкале: видео перейдёт к этому моменту' +
+      (vs.some((v) => v.region) ? ", а рамка покажет место." : ".") + '</p><ol class="viols">' + vs.map(violHtml).join("") + "</ol>" : "") +
     "</div>" +
     '<div class="after">' + shareHtml(S.jobId) +
     '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div></div>';
   document.title = (demo ? DEMO + " · " : "") + (bad ? "● Найдено нарушений: " + n : "○ Нарушений не найдено") + " — " + BASE_TITLE;
   saveLast(S.jobId, S.t0, "done");
-  renderMarks(); updateTime();
+  renderMarks(); updateTime(); placeBox();
   announce("Готово. " + (demo ? DEMO + ". " : "") + title + ". " + sub + ".");
 }
 
@@ -895,12 +929,24 @@ function openLightbox(i, j) {
   const v = S.violations[i], f = v && v.frames[j];
   if (!f) return;
   lbAt = { i, j };
+  $("lbBox").hidden = true;
   $("lbImg").src = "data:image/jpeg;base64," + f.img;
   $("lbImg").alt = "Кадр " + fmt(f.t) + ": " + v.type;
   $("lbCap").innerHTML = "<b>Кадр " + fmt(f.t) + "</b><span>" + esc(v.type) + "</span>";
   if (typeof lb.showModal === "function") lb.showModal(); else lb.setAttribute("open", "");
+  placeLbBox();
   $("lbClose").focus();
 }
+function placeLbBox() {
+  // the lightbox image is not letterboxed, so its own box is the picture
+  const box = $("lbBox"), img = $("lbImg"), v = lbAt && S.violations[lbAt.i], r = v && v.region;
+  if (!r || !img.complete || !img.offsetWidth || !img.offsetHeight) { box.hidden = true; return; }
+  placeRect(box, r, img.offsetLeft, img.offsetTop, img.offsetWidth, img.offsetHeight);
+  box.firstElementChild.textContent = String(lbAt.i + 1);
+  box.hidden = false;
+}
+$("lbImg").addEventListener("load", placeLbBox);
+window.addEventListener("resize", () => { if (lb.open || lb.hasAttribute("open")) placeLbBox(); });
 function closeLightbox() { if (typeof lb.close === "function") lb.close(); else lb.removeAttribute("open"); }
 $("lbClose").addEventListener("click", closeLightbox);
 lb.addEventListener("click", (e) => { if (e.target === lb) closeLightbox(); });

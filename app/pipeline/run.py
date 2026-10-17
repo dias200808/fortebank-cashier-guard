@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.config import Settings
 from app.jobs import ProcessFn
-from app.pipeline.change import change_times, dense_times, zone_change
+from app.pipeline.change import change_times, dense_times, door_open_series, zone_change
 from app.pipeline.frames import VideoFrames, load_frames
 from app.pipeline.people import TorchvisionPersonDetector, analyze_people, track_people
 from app.pipeline.probes import Fact, load_facts, probe_times, run_probes
@@ -118,7 +118,8 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
                  t_probes=round(time.monotonic() - t0, 1))
 
     quality = list(zip(frames.times, frames.brightness, frames.sharpness))
-    cands = evaluate(rules, RuleContext(people, states, series, quality, frames.duration, settings.probe_fps))
+    cands = evaluate(rules, RuleContext(people, states, series, quality, frames.duration, settings.probe_fps,
+                                         door_open_series(frames, zones.door, tracks)))
     rules_by_id = {r.id: r for r in rules}
     facts_by_id = {f.id: f for f in facts}
     if time.monotonic() - t0 > b:
@@ -141,7 +142,7 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
         s8 = _verify_chunked([c for c, _ in hits], rules_by_id, frames, zones, facts_by_id, models.vlm, t0, b, debug)
         accepted += [(c, score) for c, ok, score in s8 if ok]          # S8 hits are never strong: S7 must confirm
         details += [_detail(c, ok, score, "s8") for c, ok, score in s8]
-    violations = build_violations(accepted, rules_by_id, frames)
+    violations = build_violations(accepted, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id)
     debug.update(candidates=len(cands), accepted=len(accepted), candidates_detail=details,
                  t_total=round(time.monotonic() - t0, 1))
     return ("violation" if violations else "no_violation"), violations, debug

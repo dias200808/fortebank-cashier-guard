@@ -41,6 +41,7 @@ class RuleContext:
     quality: list[tuple[float, float, float]]     # (t, brightness, sharpness)
     duration: float
     probe_fps: float = 1.0                         # base probe grid; dense extras between grid points
+    door: list[tuple[float, float]] = field(default_factory=list)  # door panel change vs first frame, -1 unknown
 
 
 def load_rules(path: Path) -> list[Rule]:
@@ -244,6 +245,28 @@ def return_after_count(rule: Rule, ctx: RuleContext) -> list[Candidate]:
     return [_post_cand(rule, ctx, "F_cash_to_client", t, t, t + 3.0) for t in sorted(hits)]
 
 
+def door_left_open(rule: Rule, ctx: RuleContext) -> list[Candidate]:
+    """The door panel stays unlike the first frame for min_s (someone opened it and nobody closed it). A brief
+    opening for a passage returns to the reference and does not count; unknown samples neither extend nor break a run.
+    A run reaching the end of the video counts from end_min_s. Timecode: onset + lag_s (the passage itself is over)."""
+    p = rule.params
+    thr, min_s, end_min, lag = p.get("thr", 0.15), p.get("min_s", 8.0), p.get("end_min_s", 4.0), p.get("lag_s", 1.0)
+    out, start, last = [], None, None
+    for t, s in ctx.door + [(float("inf"), 0.0)]:
+        if s < 0:
+            continue
+        if s >= thr:
+            start, last = (t if start is None else start), t
+            continue
+        if start is not None:
+            length, at_end = last - start, t == float("inf") and last >= ctx.duration - 1.0
+            if length >= min_s or (at_end and length >= end_min):
+                at = round(min(start + lag, last), 1)
+                out.append(Candidate(rule.id, at, round(min(at + 2.0, last), 1), None, 0.8, True))
+            start = None
+    return out
+
+
 FAMILIES: dict[str, Callable[[Rule, RuleContext], list[Candidate]]] = {
     "on_cashier_left": on_cashier_left,
     "unattended_state": unattended_state,
@@ -259,6 +282,7 @@ FAMILIES.update({
     "handover_without_id": handover_without_id,
     "collector_quick_leave": collector_quick_leave,
     "return_after_count": return_after_count,
+    "door_left_open": door_left_open,
 })
 
 

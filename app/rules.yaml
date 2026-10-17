@@ -81,17 +81,13 @@
     - {q: "Is money left on the desk while a new person comes in?", window: [-1, 3], zone: full}
 - id: R08
   type: "Дверь кассы оставлена открытой"
-  family: duration
-  facts: [F_door_open]
-  params: {min_s: 8.0, strong_k: 4}
+  family: door_left_open
+  facts: []
+  params: {thr: 0.15, min_s: 8.0, end_min_s: 4.0, lag_s: 2.0}
   strength: "Н"
   norm: {act: "Правила организации охраны и устройства помещений БВУ… (пост. Правления НБРК от 24.02.2020 № 14)", point: "п. 16 пп. 1), п. 8", url: "https://adilet.zan.kz/rus/docs/V2000020075",
          quote: "каждая касса имеет отдельный вход с закрывающейся на замок дверью"}
   template: "С {t} с дверь в кассовое помещение остаётся открытой (кадр {te} с); назначение требования о закрывающейся двери не обеспечивается."
-  verify:
-    - {q: "Is the room door open?", window: [0, 8]}
-    - {q: "Is the entrance door left open?", window: [0, 8]}
-    - {q: "Can you see through an open doorway?", window: [0, 8]}
 - id: R09
   type: "Постороннее лицо в кассовом помещении"
   family: entry_during_service

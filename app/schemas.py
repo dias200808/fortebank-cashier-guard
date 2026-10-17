@@ -23,6 +23,7 @@ class Violation(BaseModel):
     rule_id: str | None = None
     rule: RuleRef | None = None
     confidence: float | None = None
+    region: list[float] | None = None    # normalized [x1, y1, x2, y2] (0..1, top-left origin) of the area concerned
 
 
 class JobResult(BaseModel):

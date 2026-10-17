@@ -66,9 +66,27 @@ def test_r06_not_when_previous_client_still_present():
     assert evaluate([RULES["R06"]], ctx(p, {"F_cash_desk": [iv(5.0, 20.0)]})) == []
 
 
-def test_r08_door_open_long():
-    assert [x.t for x in evaluate([RULES["R08"]], ctx(people([]), {"F_door_open": [iv(6.0, 21.0)]}))] == [6.0]
-    assert evaluate([RULES["R08"]], ctx(people([]), {"F_door_open": [iv(6.0, 9.0)]})) == []
+def _door(ctx_, spans, step=0.2, unknown=()):
+    ctx_.door = [(round(i * step, 1), -1.0 if any(a <= i * step < b for a, b in unknown)
+                  else (0.4 if any(a <= i * step < b for a, b in spans) else 0.01)) for i in range(int(ctx_.duration / step) + 1)]
+    return ctx_
+
+
+def test_r08_door_left_open_from_pixels():
+    # opened at 4 s and never closed: timecode = onset + 2 s, no VLM verification needed
+    assert [x.t for x in evaluate([RULES["R08"]], _door(ctx(people([])), [(4.0, 31.0)]))] == [6.0]
+    # opened for a passage and closed again
+    assert evaluate([RULES["R08"]], _door(ctx(people([])), [(4.0, 9.0)])) == []
+    # lights switched off / door hidden by a person: unknown samples neither extend nor break the run
+    assert [x.t for x in evaluate([RULES["R08"]], _door(ctx(people([])), [(4.0, 31.0)], unknown=[(8.0, 12.0)]))] == [6.0]
+    assert evaluate([RULES["R08"]], _door(ctx(people([])), [], unknown=[(20.0, 31.0)])) == []
+    # no door zone -> no series -> nothing (the full frame is not a door)
+    assert evaluate([RULES["R08"]], ctx(people([]), {"F_door_open": [iv(0.0, 30.0)]})) == []
+
+
+def test_r08_open_until_video_end_counts_from_end_min():
+    assert [x.t for x in evaluate([RULES["R08"]], _door(ctx(people([])), [(25.0, 31.0)]))] == [27.0]
+    assert evaluate([RULES["R08"]], _door(ctx(people([])), [(28.0, 31.0)])) == []
 
 
 def test_r09_second_visitor_enters():

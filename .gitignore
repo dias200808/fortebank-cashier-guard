@@ -20,3 +20,6 @@ deploy/logs/
 deploy/run/
 deploy/bin/
 .venv-vllm/
+
+# user test videos
+aidataset/

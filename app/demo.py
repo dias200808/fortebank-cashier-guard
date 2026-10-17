@@ -1,8 +1,8 @@
 """PIPELINE=demo: a UI showcase, not an analysis.
 
 Every upload gets the same two example violations (rules R01 and R08 at ~25% and ~60% of the video)
-with evidence frames cut from the uploaded video itself, so the player, timecodes and evidence cards
-can be shown without the GPU pipeline. Every type and description is labelled as a demo.
+with evidence frames cut from the uploaded video itself and a fixed example region (desk, door), so the
+player, timecodes, region boxes and evidence cards can be shown without the GPU pipeline. Every type and description is labelled as a demo.
 Imports stay light on purpose: no detector, tracker or VLM is loaded in this mode.
 """
 import base64
@@ -22,9 +22,9 @@ from app.schemas import EvidenceFrame, JobResult, RuleRef, Violation
 RULES_PATH = Path(__file__).parent / "rules.yaml"
 TYPE_PREFIX = "ДЕМО — "
 DESC_PREFIX = "[Демо-режим: это не результат анализа] "
-DEMO = (  # (rule id, position as a fraction of the duration)
-    ("R01", 0.25),
-    ("R08", 0.60),
+DEMO = (  # (rule id, position as a fraction of the duration, normalized [x1, y1, x2, y2] region)
+    ("R01", 0.25, [0.06, 0.42, 0.72, 0.62]),   # where the cash desk sits in the open/ camera layouts
+    ("R08", 0.60, [0.02, 0.02, 0.45, 0.45]),   # the glass entrance door, upper left
 )
 MAX_FRAMES = 60  # cap on decoded frames, so long uploads stay cheap in memory
 
@@ -72,7 +72,7 @@ def demo_process(path: Path, job_id: str, *, delay_s: float = 1.0) -> JobResult:
         raise ValueError("no video frames could be decoded")
     rules = _rules()
     violations = []
-    for rule_id, pos in DEMO:
+    for rule_id, pos, region in DEMO:
         rule = rules[rule_id]
         t = round(pos * frames.duration, 1)
         norm = rule["norm"]
@@ -86,5 +86,6 @@ def demo_process(path: Path, job_id: str, *, delay_s: float = 1.0) -> JobResult:
             rule_id=rule_id,
             rule=RuleRef(act=norm["act"], point=norm["point"], strength=rule["strength"], url=norm.get("url")),
             confidence=0.0,
+            region=list(region),
         ))
     return JobResult(job_id=job_id, status="done", verdict="violation", violations=violations)
