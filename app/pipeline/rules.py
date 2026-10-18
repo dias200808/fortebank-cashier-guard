@@ -21,6 +21,7 @@ class Rule:
     template: str
     verify: list[dict] = field(default_factory=list)
     enabled: bool = True
+    hint: bool = False                             # reported under «hints»: a moment to check, verdict unaffected
     summary: str = ""          # what the violation is, for the catalog on the website and in README
     signals: str = ""          # which signals the rule combines, same audience
 

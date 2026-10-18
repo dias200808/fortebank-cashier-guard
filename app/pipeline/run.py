@@ -200,10 +200,20 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
                              people)
         accepted += [(c, score) for c, ok, score in s8 if ok]          # S8 hits are never strong: S7 must confirm
         details += [_detail(c, ok, score, "s8") for c, ok, score in s8]
-    violations = build_violations(accepted, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id, objects=objects)
+    found, hinted = split_hints(accepted, rules_by_id)
+    violations = build_violations(found, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id, objects=objects)
+    debug["hints"] = build_violations(hinted, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id,
+                                      objects=objects) if hinted else []
     debug.update(candidates=len(cands), accepted=len(accepted), candidates_detail=details,
                  t_total=round(time.monotonic() - t0, 1))
     return ("violation" if violations else "no_violation"), violations, debug
+
+
+def split_hints(accepted: list, rules_by_id: dict[str, Rule]) -> tuple[list, list]:
+    """Accepted candidates of hint rules (e.g. R14: the same «cash without an ID» scene is labelled both ways in the
+    open set) go to the admin as hints; only the rest decide the verdict."""
+    hint = [a for a in accepted if rules_by_id[a[0].rule_id].hint]
+    return [a for a in accepted if not rules_by_id[a[0].rule_id].hint], hint
 
 
 def build_processor(settings: Settings, models: Models | None = None) -> ProcessFn:
@@ -217,6 +227,7 @@ def build_processor(settings: Settings, models: Models | None = None) -> Process
         log.info("job %s: %s", job_id, {k: debug.get(k) for k in (
             "budget_s", "t_objects", "t_probes", "t_total", "probe_frames", "probes_truncated", "verification_skipped",
             "verification_truncated", "verify_error", "unknown_error", "objects_error", "candidates", "accepted")})
-        return JobResult(job_id=job_id, status="done", verdict=verdict, violations=violations)
+        return JobResult(job_id=job_id, status="done", verdict=verdict, violations=violations,
+                         hints=debug.get("hints") or None)
 
     return process

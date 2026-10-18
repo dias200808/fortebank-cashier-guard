@@ -200,3 +200,13 @@ def test_coarse_first_spreads_the_dense_extras():
     assert set(order[36:71]) == {float(t) for t in range(1, 71, 2)}   # then the rest of the 1 fps grid
     first_half = order[71:81]                                        # a stop after half of the extras
     assert all(any(abs(t - e) <= 0.45 for t in first_half) for e in (5.1, 30.1, 55.1, 68.1))
+
+
+def test_hint_rules_go_to_hints_not_verdict():
+    from app.pipeline.rules import Candidate, load_rules
+    from app.pipeline.run import APP_DIR, split_hints
+    rules = {r.id: r for r in load_rules(APP_DIR / "rules.yaml")}
+    assert rules["R14"].hint and not rules["R01"].hint
+    a14, a01 = (Candidate("R14", 7.0, 7.0, None, 0.7), 0.7), (Candidate("R01", 9.0, 9.0, None, 0.8), 0.8)
+    found, hinted = split_hints([a14, a01], rules)
+    assert found == [a01] and hinted == [a14]
