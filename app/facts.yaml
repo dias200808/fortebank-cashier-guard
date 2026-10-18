@@ -7,6 +7,11 @@
 - id: F_docs_desk
   zone: desk
   question: "Is there a journal, logbook, stamp or seal lying on the desk?"
+  near: [cashier_left]
+- id: F_stamps_desk
+  zone: desk
+  question: "Are there round rubber stamps or seals (small coloured cylinders) standing on the desk?"
+  near: [cashier_left]
 - id: F_handover
   zone: desk
   question: "Is money or a document being passed from one person's hand to another person's hand?"
@@ -17,7 +22,7 @@
   zone: full
   question: "Is there a handbag, backpack, coat or jacket lying on the desk?"
 - id: F_phone
-  zone: full
+  zone: cashier
   question: "Is the cashier holding or looking at a mobile phone?"
 - id: F_safe_open
   zone: safe
@@ -25,12 +30,11 @@
 - id: F_key
   zone: safe
   question: "Is there a key inserted in the lock of the safe?"
-- id: F_door_open
-  zone: door
-  question: "Is the entrance door of the room open?"
+  near: [cashier_left]
 - id: F_screen_on
   zone: laptop
   question: "Is the laptop screen turned on and showing a document, table or program (not a lock screen or a black screen)?"
+  near: [cashier_left]
 - id: F_counting
   zone: desk
   question: "Is the cashier counting banknotes by hand or feeding them into the banknote counting machine?"

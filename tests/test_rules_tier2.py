@@ -27,10 +27,26 @@ def test_r13_not_when_counting_before_exit():
     assert evaluate([RULES["R13"]], ctx([Event(11.0, "exited", 2)], {"F_counting": [iv(5.0, 9.0)]})) == []
 
 
+CLIENT_IN = [Event(2.0, "entered", 2)]                     # the client's entry is in the clip (R14 need_entry)
+
+
 def test_r14_handover_without_id():
-    c = evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(10.0, 11.0)], "F_id_card": []}, others=lambda t: 1))
+    c = evaluate([RULES["R14"]], ctx(CLIENT_IN, {"F_handover": [iv(10.0, 11.0)], "F_id_card": []}, others=lambda t: 1))
     assert [x.t for x in c] == [10.0]
-    assert evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(10.0, 11.0)], "F_id_card": [iv(4.0, 8.0)]}, others=lambda t: 1)) == []
+    assert evaluate([RULES["R14"]], ctx(CLIENT_IN, {"F_handover": [iv(10.0, 11.0)], "F_id_card": [iv(4.0, 8.0)]}, others=lambda t: 1)) == []
+
+
+def test_r14_needs_the_clients_entry_in_the_clip():
+    """X-3, X-19, X-39 (clean): the client is at the desk from 0 s, hands money over at 7-8 s, no ID in the clip; the ID
+    may have been shown before the recording started."""
+    s = {"F_handover": [iv(7.2, 8.0)]}
+    assert evaluate([RULES["R14"]], ctx([], s, others=lambda t: 1)) == []
+    # X-3: a passer-by entered at 4.0 and left at 6.8, before the handover: still the client from 0 s
+    assert evaluate([RULES["R14"]], ctx([Event(4.0, "entered", 3), Event(6.8, "exited", 3)], s, others=lambda t: 1)) == []
+    # X-2 / X-38: the client walked in during the clip and is still there
+    assert [x.t for x in evaluate([RULES["R14"]], ctx([Event(1.4, "entered", 3)], s, others=lambda t: 1))] == [7.2]
+    off = replace(RULES["R14"], params=dict(RULES["R14"].params, need_entry=False))
+    assert [x.t for x in evaluate([off], ctx([], s, others=lambda t: 1))] == [7.2]
 
 
 def test_r15_collector_leaves_quickly():
@@ -52,12 +68,12 @@ def test_r13_not_when_someone_is_still_present():
 
 def test_r14_not_when_id_shown_at_handover_or_long_before():
     present = lambda t: 1
-    assert evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(10.0, 11.0)], "F_id_card": [iv(10.4, 12.0)]}, others=present)) == []
-    assert evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(30.0, 31.0)], "F_id_card": [iv(2.0, 6.0)]}, others=present)) == []
+    assert evaluate([RULES["R14"]], ctx(CLIENT_IN, {"F_handover": [iv(10.0, 11.0)], "F_id_card": [iv(10.4, 12.0)]}, others=present)) == []
+    assert evaluate([RULES["R14"]], ctx(CLIENT_IN, {"F_handover": [iv(30.0, 31.0)], "F_id_card": [iv(2.0, 6.0)]}, others=present, dur=40.0)) == []
 
 
 def test_r14_not_without_a_client():
-    assert evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(10.0, 11.0)]}, others=lambda t: 0)) == []
+    assert evaluate([RULES["R14"]], ctx(CLIENT_IN, {"F_handover": [iv(10.0, 11.0)]}, others=lambda t: 0)) == []
 
 
 def test_r15_not_for_a_long_visit():
@@ -66,7 +82,7 @@ def test_r15_not_for_a_long_visit():
 
 
 def test_tier2_candidates_are_never_strong():
-    c = evaluate([RULES["R14"]], ctx([], {"F_handover": [iv(10.0, 11.0)]}, others=lambda t: 1))
+    c = evaluate([RULES["R14"]], ctx(CLIENT_IN, {"F_handover": [iv(10.0, 11.0)]}, others=lambda t: 1))
     assert c and not any(x.strong for x in c)
 
 
@@ -149,3 +165,14 @@ def test_r20_is_never_strong_even_with_a_confident_series():
     assert [x.t for x in c] == [20.0] and c[0].score == 0.95 and not c[0].strong
     weak_k = replace(RULES["R20"], params=dict(RULES["R20"].params, strong_k=3))
     assert evaluate([weak_k], ctx([], R20_STATES, others=PRESENT, series=series))[0].strong   # strong_k: 99 is what blocks it
+
+
+def test_r14_s7_needs_the_handover_itself():
+    """X-5@54.8 and X-35@7.6 (clean) passed S7 on the two "no ID seen" answers alone while the handover question said
+    no; every R14 S7 question is now a veto (measured Qwen3-VL-8B answers)."""
+    from app.pipeline.verify import decide
+    r = RULES["R14"]
+    assert all(v.get("required") for v in r.verify)
+    assert decide(r, [0.004, 0.0, 0.002])[0] is False             # X-5@54.8: no money passed in the clip
+    assert decide(r, [0.438, 0.0, 0.023])[0] is False             # X-35@7.6
+    assert decide(r, [0.9, 0.05, 0.1])[0] is True                 # cash handed over, no ID in either clip

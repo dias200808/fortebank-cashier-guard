@@ -1,10 +1,11 @@
 import base64
+from pathlib import Path
 
 import numpy as np
 
 from app.pipeline.frames import VideoFrames
 from app.pipeline.report import build_violations, jpeg_b64
-from app.pipeline.rules import Candidate, Rule
+from app.pipeline.rules import Candidate, Rule, load_rules
 
 VF = VideoFrames([i * 0.2 for i in range(100)], [np.full((60, 40, 3), 100, np.uint8)] * 100, 20.0)
 R01 = Rule("R01", "Наличные без присмотра", ["on_cashier_left"], ["F_cash_desk"], {"offset_s": 0.0},
@@ -47,3 +48,10 @@ def test_evidence_frames_sorted_chronologically():
 def test_hedge_prefix_lowercases_template_start():
     v = build_violations([(Candidate("R08", 6.0, 8.0, "F_door_open", 0.9), 0.9)], {"R08": R08}, VF)
     assert v[0].description.startswith("Возможное несоответствие: с ")
+
+
+def test_r01_timecode_is_reported_a_second_before_the_departure_event():
+    # cashier_left fires once she is clear of the seat; the labels mark her getting up (X-26: label 9 s, event 11.0 s)
+    r01 = next(r for r in load_rules(Path("app/rules.yaml")) if r.id == "R01")
+    v = build_violations([(Candidate("R01", 11.0, 12.0, "F_cash_desk", 0.9), 0.9)], {"R01": r01}, VF)
+    assert v[0].timecode_sec == 10.0 and "12.0" in v[0].description          # evidence frame keeps its own time

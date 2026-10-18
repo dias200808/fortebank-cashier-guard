@@ -116,10 +116,20 @@ class PeopleTimeline:
     others: list[int]
     events: list[Event]
     seat: Box | None = None
+    boxes: list[Box | None] = field(default_factory=list)   # the cashier's box at each time, None out of view
 
     def _i(self, t: float) -> int:
         i = bisect.bisect_left(self.times, t)
         return min(max(i, 0), len(self.times) - 1)
+
+    def cashier_box_at(self, t: float) -> Box | None:
+        """The cashier's box at the sample nearest to t; None while out of view or with no cashier boxes."""
+        if not self.boxes:
+            return None
+        i = self._i(t)
+        if i > 0 and t - self.times[i - 1] < self.times[i] - t:
+            i -= 1
+        return self.boxes[i]
 
     def away_at(self, t: float) -> bool:
         return self.cashier_away[self._i(t)] if self.times else True
@@ -204,9 +214,8 @@ def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, sa
     near_safe = expand(safe, 1.5) if safe else None
     away_d = AWAY_K * cashier.height()          # scale-invariant: same physical move on a near or far camera
 
-    raw = []
-    for t in times:
-        b = cashier.box_at(t)
+    raw, boxes = [], [cashier.box_at(t) for t in times]
+    for b in boxes:
         if b is None:
             raw.append(True)
             continue
@@ -221,9 +230,14 @@ def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, sa
     if runs and runs[0][0] == 0 and cashier.start > EDGE_S:          # room empty at start
         events.append(Event(cashier.start, "cashier_entered", cashier.id))
         runs = runs[1:]
-    chains: list[list[int]] = []                                       # merge runs with short gaps
+    # merge runs with short gaps. A run from the first sample (she is in view from the start but off the seat) is never
+    # merged with a later one: a departure cannot start before the clip does. X-29: the seat (median of all centres)
+    # lands between the chair and her long walk to the door, so she is "away" 0-6.8 s while seated, back 7.0-9.4 s
+    # while walking past that point, and the 2.6 s gap chained it all into cashier_left at 0.0 (R04 on a screen she
+    # locked at 6 s); now the departure is the run from 9.6 s. Of the 40 open videos only X-29 changes.
+    chains: list[list[int]] = []
     for a, b in runs:
-        if chains and times[a] - times[chains[-1][1]] <= CHAIN_GAP_S:
+        if chains and chains[-1][0] > 0 and times[a] - times[chains[-1][1]] <= CHAIN_GAP_S:
             chains[-1][1] = b
         else:
             chains.append([a, b])
@@ -243,4 +257,4 @@ def analyze_people(tracks: list[Track], times: list[float], desk: Box | None, sa
             events.append(Event(tr.end, "exited", tr.id))
     events.sort(key=lambda e: e.t)
     seat = (sx - 0.1, sy - 0.1, sx + 0.1, sy + 0.1)
-    return PeopleTimeline(times, cashier.id, away, others, events, seat)
+    return PeopleTimeline(times, cashier.id, away, others, events, seat, boxes)

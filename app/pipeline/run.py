@@ -53,13 +53,22 @@ def build_models(settings: Settings) -> Models:
     return Models(vlm, TorchvisionPersonDetector(settings.detector, settings.device), _build_objects(settings))
 
 
+def _spread(xs: list) -> list:
+    """xs in bit-reversed index order: every prefix samples the whole list evenly."""
+    bits = max(1, (len(xs) - 1).bit_length())
+    return [xs[i] for i in sorted(range(len(xs)), key=lambda i: int(f"{i:0{bits}b}"[::-1], 2))]
+
+
 def _coarse_first(times: list[float], fps: float, duration: float) -> list[float]:
-    """Order probe times so an early stop still leaves a usable coarse timeline: 2 s grid, rest of base grid, dense extras."""
+    """Order probe times so an early stop still leaves a usable coarse timeline: 2 s grid, rest of base grid, dense extras.
+    The extras are spread, not in time order: a stop then thins every event's dense window instead of dropping the
+    windows of the last seconds (X-4 on the production budget: 184 of 240 frames, all extras after ~50 s were lost,
+    and its R06/R07 are at 55 and 68 s)."""
     grid = {round(i / fps, 2) for i in range(int(duration * fps) + 1)}
     base = [t for t in times if t in grid]
     coarse = base[::2]
     keep = set(coarse)
-    return coarse + [t for t in base if t not in keep] + [t for t in times if t not in grid]
+    return coarse + [t for t in base if t not in keep] + _spread([t for t in times if t not in grid])
 
 
 def remaining_s(video_path: Path, settings: Settings, now: float | None = None) -> float:
@@ -79,7 +88,8 @@ Checked = list[tuple[Candidate, bool, float]]
 
 
 def _verify_chunked(cands: list[Candidate], rules_by_id: dict[str, Rule], frames: VideoFrames, zones: Zones,
-                    facts_by_id: dict[str, Fact], vlm: VLM, t0: float, budget: float, debug: dict) -> Checked:
+                    facts_by_id: dict[str, Fact], vlm: VLM, t0: float, budget: float, debug: dict,
+                    people: PeopleTimeline | None = None) -> Checked:
     """S7 in chunks: over budget or VLM failure -> the rest fall back to (c, c.strong, c.score)."""
     out: Checked = []
     for i in range(0, len(cands), VERIFY_CHUNK):
@@ -87,7 +97,7 @@ def _verify_chunked(cands: list[Candidate], rules_by_id: dict[str, Rule], frames
             debug["verification_truncated"] = True
             return out + [(c, c.strong, c.score) for c in cands[i:]]
         try:
-            out += verify_all(cands[i:i + VERIFY_CHUNK], rules_by_id, frames, zones, facts_by_id, vlm)
+            out += verify_all(cands[i:i + VERIFY_CHUNK], rules_by_id, frames, zones, facts_by_id, vlm, people)
         except VLMError as e:
             log.warning("verification stopped: %s", e)
             debug["verify_error"] = str(e)
@@ -156,7 +166,7 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
             debug["probes_truncated"] = True
             break
         chunk = times[i:i + PROBE_CHUNK]
-        for fid, pts in run_probes(frames, zones, models.vlm, facts, chunk).items():
+        for fid, pts in run_probes(frames, zones, models.vlm, facts, chunk, people).items():
             series[fid] += pts
         probed += len(chunk)
     series = {fid: sorted(pts) for fid, pts in series.items()}
@@ -173,7 +183,7 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
         debug["verification_skipped"] = True
         checked = [(c, c.strong, c.score) for c in cands]
     else:
-        checked = _verify_chunked(cands, rules_by_id, frames, zones, facts_by_id, models.vlm, t0, b, debug)
+        checked = _verify_chunked(cands, rules_by_id, frames, zones, facts_by_id, models.vlm, t0, b, debug, people)
     accepted = [(c, score) for c, ok, score in checked if ok or c.strong]
     details = [_detail(c, ok, score, "cv") for c, ok, score in checked]
     if settings.unknown_channel and time.monotonic() - t0 < b * 0.7:
@@ -186,7 +196,8 @@ def analyze(path: Path, models: Models, settings: Settings, rules: list[Rule], f
         except VLMError as e:
             log.warning("unknown-type channel skipped: %s", e)
             debug["unknown_error"] = str(e)
-        s8 = _verify_chunked([c for c, _ in hits], rules_by_id, frames, zones, facts_by_id, models.vlm, t0, b, debug)
+        s8 = _verify_chunked([c for c, _ in hits], rules_by_id, frames, zones, facts_by_id, models.vlm, t0, b, debug,
+                             people)
         accepted += [(c, score) for c, ok, score in s8 if ok]          # S8 hits are never strong: S7 must confirm
         details += [_detail(c, ok, score, "s8") for c, ok, score in s8]
     violations = build_violations(accepted, rules_by_id, frames, zones=zones, facts_by_id=facts_by_id, objects=objects)

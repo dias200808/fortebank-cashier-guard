@@ -37,6 +37,13 @@ def test_r01_cash_on_desk_when_cashier_leaves():
     assert len(c) == 1 and c[0].rule_id == "R01" and c[0].t == 9.0 and c[0].strong
 
 
+def test_r01_desk_questions_are_upscaled_and_absence_is_a_veto():
+    # X-26: a few banknotes on the ~330x200 px desk crop vanish in the 6-frame S7 clip at native size; with the
+    # money questions easier to pass, "cashier away" must hold on its own (an S8 proposal mid-service is rejected)
+    assert [v.get("scale", 1) for v in RULES["R01"].verify] == [2, 2, 1]
+    assert [v.get("required", False) for v in RULES["R01"].verify] == [False, False, True]
+
+
 def test_r01_silent_when_desk_empty():
     assert evaluate([RULES["R01"]], ctx(people([Event(9.0, "cashier_left", 1)], away_from=9.0), {"F_cash_desk": []})) == []
 
@@ -213,13 +220,67 @@ def test_r12_cup_from_first_second_needs_drinking():
 
 
 def test_r14_id_shown_after_the_money_counts():
-    p = people([], others=lambda t: 1)
+    p = people([Event(2.0, "entered", 2)], others=lambda t: 1)
     assert evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(12.0, 13.0)], "F_id_card": [iv(16.0, 17.5)]})) == []
     assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(12.0, 13.0)]}))] == [12.0]
 
 
 def test_r14_checks_only_the_first_handover_of_each_visit():
-    p = people([], others=lambda t: 1)
+    p = people([Event(2.0, "entered", 2)], others=lambda t: 1)
     assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(8.0, 9.0), iv(20.0, 21.0)]}))] == [8.0]
-    p = people([Event(15.0, "exited", 2), Event(17.0, "entered", 3)], others=lambda t: 1)
+    p = people([Event(2.0, "entered", 2), Event(15.0, "exited", 2), Event(17.0, "entered", 3)], others=lambda t: 1)
     assert [x.t for x in evaluate([RULES["R14"]], ctx(p, {"F_handover": [iv(8.0, 9.0), iv(20.0, 21.0)]}))] == [8.0, 20.0]
+
+
+def _screen(on_until, step=0.2):
+    """F_screen_on as the probe sees it: content read up to on_until, then 0 (locked, closed or white glare in the dark)."""
+    return [(round(i * step, 2), 0.95 if i * step <= on_until + 1e-6 else 0.01) for i in range(int(30 / step))]
+
+
+def _light(off_at=None, back_at=None):
+    """Frame brightness: 139 lit; the switch dips auto-exposure to 39 for one frame, then it settles at ~90 (X-11)."""
+    def b(t):
+        if off_at is None or t < off_at or (back_at is not None and t >= back_at):
+            return 139.0
+        return 39.0 if t < off_at + 0.2 else 90.0
+    return [(t, b(t), 400.0) for t in T]
+
+
+def test_r04_light_switched_off_then_left_with_screen_on():
+    # X-11: screen read until 15.8, light off at 16.2 turns it into a glare (probe 0.0), cashier_left at 17.4
+    s = _screen(15.8)
+    c = evaluate([RULES["R04"]], ctx(people([Event(17.4, "cashier_left", 1)], away_from=17.4), {"F_screen_on": intervals(s)},
+                                     quality=_light(16.2), series={"F_screen_on": s}))
+    assert [(x.rule_id, x.t) for x in c] == [("R04", 17.4)] and c[0].strong and c[0].evidence_t <= 15.8
+
+
+def test_r04_screen_locked_before_light_off_is_fine():
+    # X-12: screen off at 8.4, light off at 20.2, cashier_left at 21.4 -> the screen interval ended long before the switch
+    s = _screen(8.4)
+    c = ctx(people([Event(21.4, "cashier_left", 1)], away_from=21.4), {"F_screen_on": intervals(s)},
+            quality=_light(20.2), series={"F_screen_on": s})
+    assert evaluate([RULES["R04"]], c) == []
+
+
+def test_r04_screen_locked_with_light_on_is_fine():
+    # same timing as X-11 but the light stays on: the probe going to 0 means the screen was locked, not blinded
+    s = _screen(15.8)
+    c = ctx(people([Event(17.4, "cashier_left", 1)], away_from=17.4), {"F_screen_on": intervals(s)},
+            quality=_light(None), series={"F_screen_on": s})
+    assert evaluate([RULES["R04"]], c) == []
+
+
+def test_r04_light_back_on_before_leaving_trusts_the_probe():
+    # light off at 16.2 and on again at 17.0: the probe sees the screen in the light again and reads it as off
+    s = _screen(15.8)
+    c = ctx(people([Event(17.4, "cashier_left", 1)], away_from=17.4), {"F_screen_on": intervals(s)},
+            quality=_light(16.2, back_at=17.0), series={"F_screen_on": s})
+    assert evaluate([RULES["R04"]], c) == []
+
+
+def test_light_bridge_is_r04_only():
+    # cash read until the switch is not bridged: banknotes stay readable in the dimmed room, R01 needs its own probe
+    s = _screen(15.8)
+    c = ctx(people([Event(17.4, "cashier_left", 1)], away_from=17.4), {"F_cash_desk": intervals(s)},
+            quality=_light(16.2), series={"F_cash_desk": s})
+    assert [x.rule_id for x in evaluate([RULES["R01"]], c)] == []

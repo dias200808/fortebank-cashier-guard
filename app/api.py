@@ -112,6 +112,15 @@ def _has_libx264() -> bool:
         return False
 
 
+def probe_duration(src: Path) -> float | None:
+    """Video length in seconds from the container header (no decoding), for the history list."""
+    with av.open(str(src)) as c:
+        if c.streams.video and c.streams.video[0].duration:
+            s = c.streams.video[0]
+            return float(s.duration * s.time_base)
+        return c.duration / 1_000_000 if c.duration else None
+
+
 def make_preview(src: Path, dst: Path) -> bool:
     """Write a browser-playable H.264 .mp4 copy of src to dst when src itself does not play in browsers.
     Encoder: PyAV's libx264, else the ffmpeg of imageio-ffmpeg; with neither the original stays the only file
@@ -154,8 +163,14 @@ def create_app(settings: Settings, process: ProcessFn) -> FastAPI:
             raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
 
     def preview_job(job_id: str) -> None:
-        """Background, off the analysis path: a failure here only means the player gets the original file."""
+        """Background, off the analysis path: a failure here only means the history shows no duration and the player
+        gets the original file."""
         src = store.video_path(job_id)
+        try:
+            if (dur := probe_duration(src)) is not None:
+                store.set_duration(job_id, dur)
+        except Exception as e:
+            log.info("job %s: duration unknown (%s: %s)", job_id, type(e).__name__, e)
         try:
             with preview_lock:
                 if make_preview(src, src.with_name(PREVIEW)):
@@ -166,7 +181,7 @@ def create_app(settings: Settings, process: ProcessFn) -> FastAPI:
     @app.post("/api/v1/analyze")
     async def analyze(file: UploadFile = File(...), x_api_key: str | None = Header(default=None)):
         check_key(x_api_key)
-        job_id, path = store.new_job()
+        job_id, path = store.new_job(file.filename)
         size = 0
         try:
             with open(path, "wb") as f:
@@ -177,12 +192,24 @@ def create_app(settings: Settings, process: ProcessFn) -> FastAPI:
                     f.write(chunk)
             if size == 0:
                 raise HTTPException(400, "empty file")
-        except HTTPException as e:
-            store.fail(job_id, str(e.detail))
+        except HTTPException:
+            store.discard(job_id)  # the client gets no job_id; also frees the partial upload on disk
             raise
         worker.submit(job_id)
         threading.Thread(target=preview_job, args=(job_id,), name=f"preview-{job_id}", daemon=True).start()
         return {"job_id": job_id, "status": "processing"}
+
+    @app.get("/api/v1/jobs")
+    def list_jobs(limit: int = Query(default=50), key: str | None = Query(default=None),
+                  x_api_key: str | None = Header(default=None)):
+        """History for the UI (not in the TZ), newest first; limit is clamped to 1..200. Reads a few small files per
+        job, never result.json's evidence images. queued: still waiting for the worker (else running or finished)."""
+        check_key(x_api_key, key)
+        waiting = worker.waiting()
+        jobs = store.list_jobs(max(1, min(200, limit)))
+        for j in jobs:
+            j["queued"] = j["status"] == "processing" and j["job_id"] in waiting
+        return {"jobs": jobs}
 
     @app.get("/api/v1/jobs/{job_id}")
     def get_job(job_id: str, x_api_key: str | None = Header(default=None)):

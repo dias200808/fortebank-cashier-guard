@@ -187,3 +187,16 @@ def test_candidates_detail_lists_cv_candidates(tmp_video):
     r01 = [d for d in debug["candidates_detail"] if d["rule"] == "R01"]
     assert r01 and r01[0]["source"] == "cv" and r01[0]["strong"] is True
     assert set(r01[0]) == {"rule", "t", "score", "strong", "source", "verified"}
+
+
+def test_coarse_first_spreads_the_dense_extras():
+    """A probe stop thins every event's dense window instead of dropping the last seconds (X-4: R06/R07 at 55/68 s)."""
+    from app.pipeline.run import _coarse_first
+    extras = [round(e + k * 0.2, 2) for e in (5.1, 30.1, 55.1, 68.1) for k in (-2, -1, 0, 1, 2)]
+    times = sorted([float(t) for t in range(0, 71)] + extras)
+    order = _coarse_first(times, 1.0, 70.0)
+    assert sorted(order) == times                                    # a permutation
+    assert order[:36] == [float(t) for t in range(0, 71, 2)]          # 2 s grid first
+    assert set(order[36:71]) == {float(t) for t in range(1, 71, 2)}   # then the rest of the 1 fps grid
+    first_half = order[71:81]                                        # a stop after half of the extras
+    assert all(any(abs(t - e) <= 0.45 for t in first_half) for e in (5.1, 30.1, 55.1, 68.1))

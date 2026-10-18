@@ -82,3 +82,31 @@ def test_returning_cashier_is_not_a_visitor():
     first, second = track(1, 0, 12.0), track(2, 16.0, 20)
     tl = analyze_people([first, second], T, DESK, None, 20.0, 0.55)
     assert [e.kind for e in tl.events] == ["cashier_left"] and tl.others_at(18.0) == 0
+
+
+def test_cashier_boxes_follow_the_merged_track():
+    """The cashier zone of probes/S7: the merged cashier track's box per sample, None while out of view."""
+    first, second = track(1, 0, 5.0), track(2, 10.0, 20, box=(0.42, 0.4, 0.62, 0.8))
+    client = track(3, 2.0, 8.0, box=(0.3, 0.1, 0.5, 0.4))
+    tl = analyze_people([first, second, client], T, DESK, None, 20.0, 0.55)
+    assert tl.cashier_box_at(2.0) == SEAT and tl.cashier_box_at(7.0) is None       # the client is never the cashier
+    assert tl.cashier_box_at(15.1) == (0.42, 0.4, 0.62, 0.8)                        # ID switch merged, nearest sample
+    assert analyze_people([], T, DESK, None, 20.0, 0.55).cashier_box_at(5.0) is None
+
+
+def test_an_off_seat_run_at_the_clip_start_does_not_start_a_departure():
+    """X-29: she sits 0-6.8 s, but the seat (median of all centres) lands nearer her later path, so the seated run is
+    "away"; she walks past that point 7.0-9.4 s and out of view after 15 s. The 2.8 s gap used to chain the seated run
+    into the departure (cashier_left at 0.0); the departure is the run that starts at 9.6 s."""
+    def box(t):
+        if t <= 6.8:
+            cx, cy = 0.5, 0.6                                       # seated
+        elif t <= 9.4:
+            cx, cy = 0.5, 0.48                                      # getting up, passing the median point
+        else:
+            k = (t - 9.6) / 5.4                                     # walk to the door
+            cx, cy = 0.35 - 0.25 * k, 0.4 - 0.1 * k
+        return (cx - 0.1, cy - 0.2, cx + 0.1, cy + 0.2)
+    ts = [t for t in T if t <= 15.0]
+    tl = analyze_people([Track(1, ts, [box(t) for t in ts])], T, DESK, None, 17.4, 0.55)
+    assert [(e.kind, e.t) for e in tl.events] == [("cashier_left", 9.6)]

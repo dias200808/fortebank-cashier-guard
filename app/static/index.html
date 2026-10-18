@@ -89,16 +89,57 @@
   .hint { color: var(--ink-3); font-size: 14px; }
 
   /* intake */
-  .intake { padding-bottom: 64px; }
+  .intake { padding-bottom: 40px; }
   .drop-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: min(56vh, 440px); padding: 40px 24px; border: 1.5px dashed var(--line); border-radius: 16px; background: var(--paper); color: var(--ink); font: inherit; text-align: center; cursor: pointer; }
   .drop-btn:hover, .drop.over .drop-btn { border-style: solid; border-color: var(--ink); background: var(--wash); }
   .drop-btn:focus-visible { outline-offset: 4px; border-radius: 16px; }
+  body.has-hist .drop-btn { min-height: min(38vh, 320px); } /* the history list below stays in view */
   .drop-btn svg { margin-bottom: 8px; }
   .drop-title { font-size: clamp(21px, 1.2vw + 16px, 28px); line-height: 1.2; font-weight: 650; letter-spacing: -.015em; }
   .drop-sub { color: var(--ink-2); }
   .drop-sub u { text-underline-offset: 3px; text-decoration-thickness: 1px; }
   .drop-note { color: var(--ink-3); font-size: 14px; }
   .intake-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; margin-top: 16px; }
+
+  /* toolbar above the result: new upload + history toggle */
+  .tbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .tbar .btn { padding-left: 14px; padding-right: 14px; }
+  .tbar.over #newVideo { outline: 2px dashed var(--ink); outline-offset: 3px; }
+  #histToggle[aria-expanded="true"] { border-color: var(--ink); background: var(--wash); }
+  #histToggle .hmark { width: 11px; height: 11px; }
+  #histToggle .hcount { color: var(--ink-3); }
+  .tbar-msg { margin-bottom: 20px; }
+  @media (max-width: 480px) { .tbar .btn { flex: 1 1 auto; } }
+
+  /* history */
+  .hist { padding-bottom: 64px; }
+  body.working .hist { padding-bottom: 0; margin-bottom: 28px; }
+  .hist-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+  .hist-head h2 { font-size: 17px; line-height: 1.3; font-weight: 650; }
+  body.working .hist-head { display: none; }
+  .hist-list { list-style: none; margin: 0; padding: 0; }
+  body.working .hist-list { max-height: min(40vh, 268px); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--rule); border-radius: 12px; }
+  .hitem { border-bottom: 1px solid var(--rule); }
+  body.working .hitem:last-child { border-bottom: 0; }
+  .hrow { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; width: 100%; min-height: 56px; padding: 9px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .hrow:hover { background: var(--wash); }
+  .hrow:focus-visible { outline-offset: -2px; border-radius: 0; }
+  .hitem.on, .hitem.on .hrow { background: var(--wash); box-shadow: inset 3px 0 0 var(--ink); } /* the row's hover fill would hide the li's bar */
+  .hmark { grid-row: 1 / 3; display: block; width: 12px; height: 12px; border: 1.5px solid var(--ink); border-radius: 50%; }
+  .hmark.bad { background: var(--ink); }
+  .hmark.wait { border-style: dotted; border-color: var(--ink-3); }
+  .hmark.run { border-style: dashed; animation: spin 2.4s linear infinite; }
+  .hmark.err { position: relative; border-radius: 3px; }
+  .hmark.err::after { content: "!"; position: absolute; inset: 0; font-size: 9px; font-weight: 800; line-height: 9px; text-align: center; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+  .htime { color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hmeta { grid-column: 2 / 4; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .hprog { grid-column: 2 / 4; position: relative; height: 2px; margin-top: 4px; background: var(--rule); overflow: hidden; }
+  .hprog i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--ink); }
+  .hacts { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 0 12px 12px 36px; font-size: 14px; }
+  .hnote { padding: 14px 0; color: var(--ink-3); font-size: 14px; }
+  body.working .hnote { padding: 14px 12px; }
 
   /* alert (neutral, monochrome) */
   .alert { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1.5px solid var(--ink); border-radius: 10px; }
@@ -209,6 +250,24 @@
   .fzoom:hover { background: var(--wash); }
   .viol.on .fzoom:hover { background: var(--paper); }
   .after { margin-top: 36px; padding-top: 4px; }
+  .after-new { margin-top: 20px; }
+
+  /* hints: moments worth a look that do not affect the verdict, quieter than violations */
+  .hints { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--rule); }
+  .disclaimer + .hints { margin-top: 28px; padding-top: 0; border-top: 0; } /* no violations: the disclaimer's rule is enough */
+  .hints h3 { font-size: 16px; line-height: 1.35; font-weight: 650; color: var(--ink-2); }
+  .hints h3 span { font-weight: 400; color: var(--ink-3); }
+  .hints .lead { margin-top: 6px; }
+  .viol.hint .vnum { border-style: dashed; border-color: var(--ink-3); color: var(--ink-2); font-size: 12px; }
+  .viol.hint.on .vnum { border-style: solid; border-color: var(--ink-2); background: var(--ink-2); color: var(--paper); }
+  .viol.hint .vtitle { font-size: 16px; font-weight: 600; color: var(--ink-2); }
+  .viol.hint .vtc { font-size: 14px; color: var(--ink-2); }
+  .viol.hint .fthumb img { height: 110px; }
+  .mk.hint span { border-style: dashed; border-color: var(--ink-3); color: var(--ink-2); font-size: 10px; letter-spacing: -.02em; }
+  .mk.hint::after { background: var(--ink-3); }
+  .mk.hint.on span { border-style: solid; border-color: var(--ink-2); background: var(--ink-2); color: var(--paper); }
+  .rbox.hint { border-style: dashed; }
+  .rbox.hint b { background: var(--ink-2); }
   @media (max-width: 480px) {
     .vhead { grid-template-columns: 28px minmax(0, 1fr); }
     .vtc { grid-column: 2; padding-top: 0; }
@@ -316,21 +375,34 @@
 </header>
 
 <main class="wrap" id="main">
+  <input type="file" id="file" class="sr-only" accept=".mov,video/*" multiple tabindex="-1" aria-hidden="true">
+  <div class="tbar" id="tbar" hidden>
+    <button type="button" class="btn primary" id="newVideo" title="Можно выбрать несколько файлов или перетащить их на страницу">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 11V2M3 6l4-4 4 4M1 13h12"/></svg>Новое видео
+    </button>
+    <button type="button" class="btn" id="histToggle" aria-expanded="false" aria-controls="hist"></button>
+  </div>
+  <div class="tbar-msg" id="tbarMsg" hidden></div>
+
   <section class="intake" id="intake" aria-label="Загрузка видео">
     <div class="drop" id="drop">
-      <input type="file" id="file" class="sr-only" accept=".mov,video/*" tabindex="-1" aria-hidden="true">
       <button type="button" class="drop-btn" id="pick">
         <svg width="40" height="58" viewBox="0 0 40 58" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="1.75" width="30" height="54.5" rx="5"/><path d="M20 38V19M13 26l7-7 7 7"/></svg>
         <span class="drop-title">Перетащите видео сюда</span>
-        <span class="drop-sub">или <u>выберите файл</u> на компьютере</span>
-        <span class="drop-note">Запись с камеры кассы, формат .mov</span>
+        <span class="drop-sub">или <u>выберите файлы</u> на компьютере</span>
+        <span class="drop-note">Запись с камеры кассы, формат .mov. Можно несколько файлов сразу</span>
       </button>
     </div>
     <div id="intakeMsg" hidden></div>
     <div class="intake-foot">
       <p class="hint">Результат — подсказка для проверяющего, а не юридическое заключение.</p>
-      <button type="button" class="link hint" id="openLast" hidden>Открыть последнюю проверку</button>
     </div>
+  </section>
+
+  <section class="hist" id="hist" aria-labelledby="histTitle" hidden>
+    <div class="hist-head"><h2 id="histTitle">История проверок</h2></div>
+    <ol class="hist-list" id="histList" aria-label="История проверок, новые сверху"></ol>
+    <p class="hnote" id="histNote" hidden></p>
   </section>
 
   <div class="work" id="work" hidden>
@@ -420,7 +492,23 @@ function plural(n, one, few, many) {
 }
 function fsize(b) {
   const mb = b / 1048576;
-  return mb >= 1 ? mb.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " МБ" : Math.max(1, Math.round(b / 1024)) + " КБ";
+  return mb >= 1 ? mb.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " МБ" : (b > 0 ? Math.max(1, Math.round(b / 1024)) : 0) + " КБ";
+}
+function fmtLen(sec) {
+  const n = Math.floor(num(sec));  // floored like the player's own clock (72.7 s -> 1:12)
+  return Math.floor(n / 60) + ":" + String(n % 60).padStart(2, "0");
+}
+function fmtWhen(ms) {
+  // history time: today -> 14:32, yesterday -> вчера, 14:32, else 17 окт., 14:32 (with the year when not this one)
+  const d = new Date(ms), now = new Date();
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 864e5);
+  if (diff === 0) return hm;
+  if (diff === 1) return "вчера, " + hm;
+  const o = { day: "numeric", month: "short" };
+  if (d.getFullYear() !== now.getFullYear()) o.year = "numeric";
+  return d.toLocaleDateString("ru-RU", o) + ", " + hm;
 }
 const reduced = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
 const behavior = () => (reduced() ? "auto" : "smooth");
@@ -428,11 +516,16 @@ const announce = (msg) => { $("live").textContent = ""; setTimeout(() => { $("li
 
 /* ---------- state ---------- */
 const S = {
-  key: "", phase: "idle", file: null, objUrl: null, xhr: null,
+  key: "", phase: "idle", item: null, objUrl: null,
   jobId: null, t0: 0, resume: false, gen: 0, pollTimer: 0, tick: 0,
-  violations: [], active: -1, duration: 0, retry: null, pending: null,
+  items: [], active: -1, duration: 0, retry: null, pending: null,
   title: BASE_TITLE, vidFailed: false,
 };
+// S.items: violations (kind "v", labels 1, 2...) then hints (kind "h", labels П1, П2...); S.item: the local upload in view
+// local uploads, sent one at a time: state wait | up | sent (has jobId) | error; hold: paused until a valid key is saved
+const Q = { list: [], seq: 0, hold: false };
+// server history (GET /api/v1/jobs); open: the panel above the player is expanded on the result screen
+const H = { jobs: [], byId: {}, loaded: false, err: "", busy: false, again: false, timer: 0, open: false, rows: 0 };
 // the catalog view keeps its own title; the analyser's title is applied when the user comes back
 function setTitle(t) { S.title = t; if (!CAT.open) document.title = t; }
 
@@ -448,10 +541,6 @@ function readLast() {
     if (o && typeof o.id === "string" && ID_RE.test(o.id)) return { id: o.id, t0: Number(o.t0) || 0, status: String(o.status || "") };
   } catch (e) {}
   return null;
-}
-function refreshLast() {
-  const last = readLast();
-  $("openLast").hidden = !last || last.status === "processing";
 }
 const shareUrl = (id) => location.origin + location.pathname + "?job=" + encodeURIComponent(id);
 const videoUrl = (id) => "/api/v1/jobs/" + encodeURIComponent(id) + "/video?key=" + encodeURIComponent(S.key);
@@ -486,8 +575,11 @@ $("keyForm").addEventListener("submit", (e) => {
   S.key = v; LS.set("apiKey", v);
   keyHint(""); renderKey(false);
   announce("API-ключ сохранён");
+  Q.hold = false;
   const next = S.pending; S.pending = null;
   if (next) next(); else $("keyEdit").focus();
+  if (S.item && S.item.state === "wait") showItem(S.item);
+  pump(); loadHistory();
 });
 function takeTypedKey() {
   if (S.key) return;
@@ -541,28 +633,35 @@ vid.addEventListener("play", () => { cancelAnimationFrame(raf); raf = requestAni
 ["pause", "ended", "emptied"].forEach((ev) => vid.addEventListener(ev, () => { cancelAnimationFrame(raf); updateTime(); }));
 ["timeupdate", "seeked", "seeking"].forEach((ev) => vid.addEventListener(ev, updateTime));
 
+const itemName = (v) => (v.kind === "h" ? "Подсказка " : "Нарушение ") + v.label + ": " + v.type + ", " + fmt(v.t);
 function renderMarks() {
-  const box = $("tlMarks"), d = S.duration, vs = S.violations;
+  const box = $("tlMarks"), d = S.duration, vs = S.items;
   if (!d || !vs.length) { box.innerHTML = ""; $("tl").classList.remove("two", "has"); return; }
   const lastPct = [-1e9, -1e9];
   let two = false;
-  box.innerHTML = vs.map((v, i) => {
+  // rows are assigned in time order across violations and hints, so close markers never overlap
+  const order = vs.map((v, i) => i).sort((a, b) => vs[a].t - vs[b].t);
+  box.innerHTML = order.map((i) => {
+    const v = vs[i];
     const pct = Math.min(100, Math.max(0, (v.t / d) * 100));
     let row = 0;
     if (pct - lastPct[0] < 8) { row = pct - lastPct[1] < 8 ? 0 : 1; }
     lastPct[row] = pct;
     if (row) two = true;
-    const label = "Нарушение " + (i + 1) + ": " + v.type + ", " + fmt(v.t);
-    return '<button type="button" class="mk' + (i === S.active ? " on" : "") + '" data-i="' + i + '" data-row="' + row +
-      '" style="left:clamp(13px,' + pct.toFixed(3) + '%,calc(100% - 13px))" aria-label="' + esc(label) + '" title="' + esc(label) + '"><span>' + (i + 1) + "</span></button>";
+    const label = itemName(v);
+    return '<button type="button" class="mk' + (v.kind === "h" ? " hint" : "") + (i === S.active ? " on" : "") + '" data-i="' + i + '" data-row="' + row +
+      '" style="left:clamp(13px,' + pct.toFixed(3) + '%,calc(100% - 13px))" aria-label="' + esc(label) + '" title="' + esc(label) + '"><span>' + esc(v.label) + "</span></button>";
   }).join("");
   $("tl").classList.add("has");
   $("tl").classList.toggle("two", two);
 }
 function updateActive(t) {
-  if (!S.violations.length) return;
-  let a = -1;
-  S.violations.forEach((v, i) => { if (t >= v.w0 && t <= v.w1) a = i; });
+  if (!S.items.length) return;
+  const cur = S.items[S.active];
+  if (cur && t >= cur.w0 && t <= cur.w1) return;  // the chosen card stays active while its window plays
+  let a = -1, h = -1;  // otherwise a violation wins over a hint whose window overlaps it
+  S.items.forEach((v, i) => { if (t >= v.w0 && t <= v.w1) { if (v.kind === "h") h = i; else a = i; } });
+  if (a === -1) a = h;
   if (a !== S.active) setActive(a);
 }
 function setActive(i) {
@@ -584,12 +683,13 @@ function placeRect(el, r, x, y, w, h) {
 }
 function placeBox() {
   // region of the active violation over the picture actually drawn: the element may letterbox it (contain)
-  const box = $("vbox"), v = S.violations[S.active], r = v && v.region;
+  const box = $("vbox"), v = S.items[S.active], r = v && v.region;
   const vw = vid.videoWidth, vh = vid.videoHeight, ew = vid.clientWidth, eh = vid.clientHeight;
   if (!r || !vw || !vh || !ew || !eh || !vid.getAttribute("src")) { box.hidden = true; return; }
   const k = Math.min(ew / vw, eh / vh), pw = vw * k, ph = vh * k;
   placeRect(box, r, vid.offsetLeft + (ew - pw) / 2, vid.offsetTop + (eh - ph) / 2, pw, ph);
-  box.firstElementChild.textContent = String(S.active + 1);
+  box.firstElementChild.textContent = v.label;
+  box.classList.toggle("hint", v.kind === "h");
   box.hidden = false;
 }
 function playFrom(t, mode) {
@@ -605,7 +705,7 @@ function ensurePlayerVisible() {
   if (visible < r.height * 0.6) $("player").scrollIntoView({ block: "start", behavior: behavior() });
 }
 function seekViolation(i, fromMarker) {
-  const v = S.violations[i];
+  const v = S.items[i];
   if (!v) return;
   setActive(i);
   playFrom(Math.max(0, v.t - 1.0), true);
@@ -617,7 +717,7 @@ function seekViolation(i, fromMarker) {
   } else ensurePlayerVisible();
 }
 function seekFrame(i, j) {
-  const v = S.violations[i], f = v && v.frames[j];
+  const v = S.items[i], f = v && v.frames[j];
   if (!f) return;
   setActive(i);
   playFrom(f.t, false);
@@ -638,7 +738,6 @@ function alertHtml(title, text, meta, extra) {
     '<p class="alert-title">' + esc(title) + "</p>" + (text ? '<p class="alert-text">' + esc(text) + "</p>" : "") +
     (meta ? '<p class="alert-meta">' + esc(meta) + "</p>" : "") + (extra || "") + "</div></div>";
 }
-const RESET_BTN = '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div>';
 function shareHtml(id) {
   return '<div class="share"><label for="shareUrl">Ссылка на результат</label><div class="share-row">' +
     '<input id="shareUrl" type="text" readonly value="' + esc(shareUrl(id)) + '">' +
@@ -648,14 +747,15 @@ function shareHtml(id) {
 function setPhase(p) {
   S.phase = p;
   clearInterval(S.tick); S.tick = 0;
-  window.onbeforeunload = p === "uploading" ? (e) => { e.preventDefault(); e.returnValue = ""; return ""; } : null;
-  if (p === "ready") {
+  if (p === "waiting") {
     setTitle(BASE_TITLE);
-    stage.innerHTML = '<div class="ready"><h2>Видео готово к проверке</h2>' +
-      "<p>Сервис найдёт моменты с признаками нарушений и отметит их на шкале под видео. Обычно проверка занимает до 2 минут.</p>" +
-      '<div class="actions"><button type="button" class="btn primary" data-act="go">Проверить видео</button>' +
-      '<button type="button" class="btn" data-act="change">Выбрать другой файл</button></div>' +
-      '<p class="pnote" id="pnote"></p></div>';
+    stage.innerHTML = '<div class="phase-head"><h2>Ожидает загрузки</h2></div>' +
+      '<div class="bar" aria-hidden="true"><i></i></div>' +
+      '<p class="hint">Видео отправится на проверку после предыдущих файлов. Не закрывайте страницу до окончания загрузки.</p>' +
+      '<div class="actions"><button type="button" class="btn" data-act="cancel">Отменить</button></div>';
+  } else if (p === "keywait") {
+    setTitle(BASE_TITLE);
+    stage.innerHTML = alertHtml("Нужен API-ключ", "Введите ключ в поле вверху страницы: загрузка начнётся сразу после сохранения.");
   } else if (p === "uploading") {
     setTitle("Загрузка видео — " + BASE_TITLE);
     stage.innerHTML = '<div class="phase-head"><h2>Загрузка видео</h2><span class="num" id="upPct">0 %</span></div>' +
@@ -667,13 +767,14 @@ function setPhase(p) {
     setTitle(BASE_TITLE);
     stage.innerHTML = '<div class="phase-head"><h2>Загружаем результат</h2></div>' +
       '<div class="bar ind" role="progressbar" aria-label="Загрузка результата"><i></i></div>' +
-      '<p class="hint">Задача <span class="num">' + esc(S.jobId) + "</span></p>" + '<p class="pnote" id="pnote"></p>' + RESET_BTN;
+      '<p class="hint">Задача <span class="num">' + esc(S.jobId) + "</span></p>" + '<p class="pnote" id="pnote"></p>';
   } else if (p === "processing") {
     setTitle("Идёт анализ — " + BASE_TITLE);
-    stage.innerHTML = '<div class="phase-head"><h2>Идёт анализ</h2><span class="num" id="elapsed" aria-hidden="true">0 с</span></div>' +
+    const j = H.byId[S.jobId], queued = !!(j && j.status === "processing" && j.queued);
+    stage.innerHTML = '<div class="phase-head"><h2 id="phead">' + (queued ? "В очереди на анализ" : "Идёт анализ") + '</h2><span class="num" id="elapsed" aria-hidden="true">0 с</span></div>' +
       '<div class="bar ind" role="progressbar" aria-label="Идёт анализ"><i></i></div>' +
-      '<p class="hint" id="phint">Обычно до 2 минут. Страницу можно закрыть: результат откроется по ссылке.</p>' +
-      '<p class="pnote" id="pnote"></p>' + shareHtml(S.jobId) + RESET_BTN;
+      '<p class="hint" id="phint">Обычно до 2 минут. Страницу можно закрыть: результат откроется по ссылке и в истории.</p>' +
+      '<p class="pnote" id="pnote"></p>' + shareHtml(S.jobId);
     S.tick = setInterval(updElapsed, 1000); updElapsed();
     announce("Идёт анализ, обычно до 2 минут.");
   } else if (p === "needkey") {
@@ -688,6 +789,11 @@ function updElapsed() {
   el.textContent = fmtDur(s);
   if (s > 150 && $("phint")) $("phint").textContent = "Анализ идёт дольше обычного. Страницу можно закрыть и открыть результат позже по ссылке.";
 }
+function updQueued() {
+  // the processing heading follows the history: «В очереди на анализ» while another video is being analysed
+  const h = $("phead"), j = H.byId[S.jobId];
+  if (h && S.phase === "processing") h.textContent = j && j.status === "processing" && j.queued ? "В очереди на анализ" : "Идёт анализ";
+}
 function setUpload(p) {
   const v = Math.max(0, Math.min(100, Math.round(p)));
   const bar = $("upBar");
@@ -700,11 +806,9 @@ function setUpload(p) {
 function showError(title, text, retry) {
   S.phase = "error"; S.retry = retry || null;
   clearInterval(S.tick); S.tick = 0;
-  window.onbeforeunload = null;
   setTitle("Ошибка — " + BASE_TITLE);
-  stage.innerHTML = alertHtml(title, text, S.jobId ? "Задача " + S.jobId : "") +
-    '<div class="actions">' + (retry ? '<button type="button" class="btn primary" data-act="retry">Повторить</button>' : "") +
-    '<button type="button" class="btn" data-act="reset">Проверить другое видео</button></div>';
+  stage.innerHTML = alertHtml(title, text, S.jobId ? "Задача " + S.jobId : S.item ? S.item.name : "") +
+    (retry ? '<div class="actions"><button type="button" class="btn primary" data-act="retry">Повторить</button></div>' : "");
 }
 function showFailed(err) {
   S.phase = "failed";
@@ -712,8 +816,7 @@ function showFailed(err) {
   saveLast(S.jobId, S.t0, "failed");
   setTitle("Не удалось обработать — " + BASE_TITLE);
   const tech = '<details class="tech"><summary>Подробнее</summary><pre>' + esc(err ? String(err) : "Сервер не сообщил причину.") + "</pre></details>";
-  stage.innerHTML = alertHtml("Не удалось обработать видео", "Проверьте, что файл — видеозапись .mov, и попробуйте ещё раз.", "Задача " + S.jobId, tech) +
-    '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div>';
+  stage.innerHTML = alertHtml("Не удалось обработать видео", "Проверьте, что файл — видеозапись .mov, и попробуйте ещё раз.", "Задача " + S.jobId, tech);
 }
 function normViolations(list) {
   return (Array.isArray(list) ? list : []).map((raw) => {
@@ -755,13 +858,13 @@ function violHtml(v, i) {
     const tc = fmt(f.t);
     return '<li><figure class="frame"><button type="button" class="fthumb" data-i="' + i + '" data-j="' + j + '" aria-label="Показать в видео кадр ' + tc + '">' +
       '<img src="data:image/jpeg;base64,' + f.img + '" alt="Кадр ' + tc + ": " + esc(v.type) + '" decoding="async">' +
-      (v.region ? '<span class="rbox" style="' + pctBox(v.region) + '" aria-hidden="true"><b>' + (i + 1) + "</b></span>" : "") + "</button>" +
+      (v.region ? '<span class="rbox' + (v.kind === "h" ? " hint" : "") + '" style="' + pctBox(v.region) + '" aria-hidden="true"><b>' + esc(v.label) + "</b></span>" : "") + "</button>" +
       '<figcaption><span>' + tc + '</span><button type="button" class="fzoom" data-i="' + i + '" data-j="' + j + '" aria-label="Увеличить кадр ' + tc + '" title="Увеличить">' + ICON_ZOOM + "</button></figcaption></figure></li>";
   }).join("");
-  const headLabel = "Нарушение " + (i + 1) + ": " + v.type + ", " + fmt(v.t) + ". Смотреть в видео";
-  return '<li class="viol" data-i="' + i + '">' +
+  const headLabel = itemName(v) + ". Смотреть в видео";
+  return '<li class="viol' + (v.kind === "h" ? " hint" : "") + '" data-i="' + i + '">' +
     '<button type="button" class="vhead" data-i="' + i + '" aria-label="' + esc(headLabel) + '">' +
-    '<span class="vnum" aria-hidden="true">' + (i + 1) + "</span>" +
+    '<span class="vnum" aria-hidden="true">' + esc(v.label) + "</span>" +
     '<span class="vtitle">' + esc(v.type) + "</span>" +
     '<span class="vtc">' + ICON_PLAY + fmt(v.t) + "</span></button>" +
     '<div class="vbody">' + (v.desc ? '<p class="vdesc">' + esc(v.desc) + "</p>" : "") + norm +
@@ -774,10 +877,13 @@ function renderDone(d) {
   }
   S.phase = "done";
   clearInterval(S.tick); S.tick = 0;
-  S.violations = normViolations(d.violations); S.active = -1;
+  const vs = normViolations(d.violations), hs = normViolations(d.hints);  // hints: optional, never part of the verdict
+  vs.forEach((v, k) => { v.kind = "v"; v.label = String(k + 1); });
+  hs.forEach((v, k) => { v.kind = "h"; v.label = "П" + (k + 1); });
+  S.items = vs.concat(hs); S.active = -1;
   // a codec the browser cannot decode (HEVC from an iPhone...): the server makes an H.264 copy while it analyses
   if (S.vidFailed && S.jobId) setVideo(videoUrl(S.jobId) + "&preview=1");
-  const vs = S.violations, n = vs.length, bad = d.verdict === "violation";
+  const n = vs.length, bad = d.verdict === "violation";
   const title = bad ? "Обнаружены признаки возможных нарушений" : "Нарушение не обнаружено";
   const demo = vs.some((v) => v.type.indexOf("ДЕМО — ") === 0), DEMO = "Демо-режим — это не результат анализа";
   let sub;
@@ -787,14 +893,18 @@ function renderDone(d) {
     '<div><h2 id="vh" tabindex="-1">' + title + '</h2>' + (demo ? '<p class="vdemo">' + DEMO + "</p>" : "") + '</div><p class="vsub">' + esc(sub) + "</p></div>" +
     '<p class="disclaimer">Результат — подсказка для проверяющего, а не юридическое заключение.</p>' +
     (n ? '<p class="lead">Нажмите на нарушение или отметку на шкале: видео перейдёт к этому моменту' +
-      (vs.some((v) => v.region) ? ", а рамка покажет место." : ".") + '</p><ol class="viols">' + vs.map(violHtml).join("") + "</ol>" : "") +
+      (vs.some((v) => v.region) ? ", а рамка покажет место." : ".") + '</p><ol class="viols">' + vs.map((v, k) => violHtml(v, k)).join("") + "</ol>" : "") +
+    (hs.length ? '<section class="hints" aria-labelledby="hintsH"><h3 id="hintsH">Подсказки для проверки <span>(не влияют на вердикт)</span></h3>' +
+      '<p class="lead">Сервис не считает эти моменты нарушениями, но их стоит просмотреть. Нажмите на подсказку: видео перейдёт к этому моменту.</p>' +
+      '<ol class="viols">' + hs.map((v, k) => violHtml(v, n + k)).join("") + "</ol></section>" : "") +
     "</div>" +
     '<div class="after">' + shareHtml(S.jobId) +
-    '<div class="actions"><button type="button" class="btn" data-act="reset">Проверить другое видео</button></div></div>';
+    '<p class="after-new"><button type="button" class="link hint" data-act="new">Загрузить другое видео</button></p></div>';
   setTitle((demo ? DEMO + " · " : "") + (bad ? "● Найдено нарушений: " + n : "○ Нарушений не найдено") + " — " + BASE_TITLE);
   saveLast(S.jobId, S.t0, "done");
   renderMarks(); updateTime(); placeBox();
-  announce("Готово. " + (demo ? DEMO + ". " : "") + title + ". " + sub + ".");
+  announce("Готово. " + (demo ? DEMO + ". " : "") + title + ". " + sub + "." +
+    (hs.length ? " Подсказок для проверки: " + hs.length + "." : ""));
 }
 
 /* ---------- polling (hardened) ---------- */
@@ -851,62 +961,260 @@ async function poll(id, gen, retries) {
     return;
   }
   if (S.resume) {
-    // resumed from storage without ?job=: only a still-running job is reopened; a finished one stays behind "Открыть последнюю проверку"
+    // resumed from storage without ?job=: only a still-running job is reopened; a finished one is in the history
     S.resume = false;
     if (d.status === "failed" || d.status === "done") { saveLast(id, S.t0, d.status); resetAll(true); return; }
   }
-  if (d.status === "failed") { showFailed(d.error); return; }
-  if (d.status === "done") { renderDone(d); return; }
+  if (d.status === "failed") { showFailed(d.error); loadHistory(); return; }
+  if (d.status === "done") { renderDone(d); loadHistory(); return; }
   showError("Неизвестный статус задачи", "Сервер вернул статус, который интерфейс не понимает.", () => { setPhase("loading"); startPolling(id); });
 }
 
-/* ---------- upload ---------- */
-function startUpload() {
-  if (!S.file) return;
+/* ---------- upload queue: files go to the server one at a time, the server queues the analyses ---------- */
+const sending = () => Q.list.some((it) => it.state === "up");
+const findItem = (lid) => Q.list.find((it) => String(it.lid) === String(lid));
+function updUnload() {
+  const on = Q.list.some((it) => it.state === "wait" || it.state === "up");
+  window.onbeforeunload = on ? (e) => { e.preventDefault(); e.returnValue = ""; return ""; } : null;
+}
+function enqueue(f) {
+  const it = { lid: ++Q.seq, file: f, name: f.name || "видео", size: f.size || 0, state: "wait", pct: 0, jobId: null, t0: 0,
+    title: "", text: "", retry: true, xhr: null };
+  Q.list.push(it);
+  return it;
+}
+function pump() {
+  updUnload();
+  if (Q.hold || sending()) return;
+  const it = Q.list.find((x) => x.state === "wait");
+  if (!it) return;
   takeTypedKey();
   if (!S.key) {
-    needKey("Введите API-ключ, чтобы начать проверку.", startUpload);
-    pnote("Сначала введите API-ключ вверху страницы.");
+    // the key form's submit releases the queue
+    Q.hold = true;
+    needKey("Введите API-ключ, чтобы начать проверку.", S.pending);
+    if (S.item && S.item.state === "wait") setPhase("keywait");
+    renderHist();
     return;
   }
+  send(it);
+}
+function send(it) {
   const fd = new FormData();
-  fd.append("file", S.file);
+  fd.append("file", it.file, it.name);
   const xhr = new XMLHttpRequest();
-  S.xhr = xhr;
+  it.xhr = xhr; it.state = "up"; it.pct = 0; it.title = it.text = "";
   xhr.open("POST", "/api/v1/analyze");
   xhr.setRequestHeader("X-API-Key", S.key);
-  setPhase("uploading");
-  xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUpload((100 * e.loaded) / e.total); };
-  xhr.onload = () => {
-    S.xhr = null;
-    if (xhr.status !== 200) {
-      let detail = "";
-      try { const j = JSON.parse(xhr.responseText); if (j && typeof j.detail === "string") detail = j.detail; } catch (e) {}
-      if (xhr.status === 401) {
-        showError("Неверный API-ключ", "Сервер отклонил ключ. Введите правильный ключ вверху страницы и повторите.", startUpload);
-        needKey("Введите правильный API-ключ.", startUpload);
-      } else if (xhr.status === 413) {
-        showError("Файл слишком большой", "Сервер не принял файл такого размера. Выберите запись меньшего размера.", null);
-      } else if (xhr.status === 400) {
-        showError("Файл не принят", detail === "empty file" ? "Файл пустой." : detail || "Сервер отклонил файл.", null);
-      } else {
-        showError("Ошибка загрузки: " + xhr.status, detail || "Сервер не принял видео.", startUpload);
-      }
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    it.pct = (100 * e.loaded) / e.total;
+    if (S.item === it) setUpload(it.pct);
+    updRow(it);
+  };
+  xhr.onload = () => { it.xhr = null; sent(it, xhr); };
+  xhr.onerror = () => { it.xhr = null; failItem(it, "Сеть недоступна", "Не удалось отправить видео. Проверьте, что сервер запущен.", true); pump(); };
+  xhr.ontimeout = () => { it.xhr = null; failItem(it, "Превышено время ожидания загрузки", "", true); pump(); };
+  xhr.send(fd);
+  if (S.item === it) setPhase("uploading");
+  renderHist(); updUnload();
+}
+function sent(it, xhr) {
+  if (xhr.status !== 200) {
+    let detail = "";
+    try { const j = JSON.parse(xhr.responseText); if (j && typeof j.detail === "string") detail = j.detail; } catch (e) {}
+    if (xhr.status === 401) {
+      // the whole queue waits for a valid key; this file goes again once it is saved
+      it.state = "wait"; Q.hold = true;
+      if (S.item === it) showError("Неверный API-ключ", "Сервер отклонил ключ. Введите правильный ключ вверху страницы: загрузка продолжится.", null);
+      needKey("Введите правильный API-ключ.", S.pending);
+      renderHist(); updUnload();
       return;
     }
-    let jobId = null;
-    try { jobId = JSON.parse(xhr.responseText).job_id; } catch (e) {}
-    if (typeof jobId !== "string" || !ID_RE.test(jobId)) { showError("Некорректный ответ сервера", "Сервер не вернул номер задачи.", startUpload); return; }
-    S.jobId = jobId; S.t0 = Date.now();
-    saveLast(jobId, S.t0, "processing");
-    setUrl(jobId);
+    if (xhr.status === 413) failItem(it, "Файл слишком большой", "Сервер не принял файл такого размера. Выберите запись меньшего размера.", false);
+    else if (xhr.status === 400) failItem(it, "Файл не принят", detail === "empty file" ? "Файл пустой." : detail || "Сервер отклонил файл.", false);
+    else failItem(it, "Ошибка загрузки: " + xhr.status, detail || "Сервер не принял видео.", true);
+    pump();
+    return;
+  }
+  let jobId = null;
+  try { jobId = JSON.parse(xhr.responseText).job_id; } catch (e) {}
+  if (typeof jobId !== "string" || !ID_RE.test(jobId)) { failItem(it, "Некорректный ответ сервера", "Сервер не вернул номер задачи.", true); pump(); return; }
+  it.state = "sent"; it.jobId = jobId; it.t0 = Date.now();
+  if (S.item === it) showItem(it);
+  renderHist(); loadHistory(); pump();
+}
+function failItem(it, title, text, retry) {
+  it.state = "error"; it.title = title; it.text = text; it.retry = retry; it.pct = 0;
+  if (S.item === it) showItem(it);
+  renderHist(); updUnload();
+}
+function retryItem(it) {
+  if (it.state !== "error") return;
+  it.state = "wait"; it.title = it.text = "";
+  if (S.item === it) showItem(it);
+  renderHist(); pump();
+}
+function cancelItem(it) {
+  if (!it || (it.state !== "wait" && it.state !== "up")) return;
+  if (it.xhr) { const x = it.xhr; it.xhr = null; x.onload = x.onerror = x.ontimeout = null; x.abort(); }
+  failItem(it, "Загрузка отменена", "", true);
+  announce("Загрузка отменена");
+  pump();
+}
+function removeItem(it) {
+  cancelItem(it);
+  const i = Q.list.indexOf(it);
+  if (i !== -1) Q.list.splice(i, 1);
+  if (S.item === it) resetAll(true); else renderHist();
+  updUnload();
+}
+function showItem(it) {
+  // the stage for the local upload in view, from its state
+  if (it.state === "sent") {
+    S.jobId = it.jobId; S.t0 = it.t0;
+    saveLast(it.jobId, it.t0, "processing");
+    setUrl(it.jobId);
     setPhase("processing");
-    startPolling(jobId);
+    startPolling(it.jobId);
+  } else if (it.state === "up") { setPhase("uploading"); setUpload(it.pct); }
+  else if (it.state === "error") showError(it.title, it.text, it.retry ? () => retryItem(it) : null);
+  else setPhase(S.key && !Q.hold ? "waiting" : "keywait");
+}
+
+/* ---------- history: GET /api/v1/jobs merged with the local uploads not on the server yet, newest first ---------- */
+const narrow = () => !!(window.matchMedia && matchMedia("(max-width: 819px)").matches);
+const JOB_STATUS = { processing: 1, done: 1, failed: 1 };
+function normJob(j) {
+  if (!j || typeof j !== "object" || typeof j.job_id !== "string" || !ID_RE.test(j.job_id) || !JOB_STATUS[j.status]) return null;
+  const t0 = Date.parse(j.submitted_at), dur = Number(j.duration_s);
+  return {
+    id: j.job_id, status: j.status, queued: j.queued === true,
+    name: typeof j.filename === "string" ? j.filename : "",
+    verdict: j.verdict === "violation" || j.verdict === "no_violation" ? j.verdict : null,
+    n: Number.isInteger(j.n_violations) && j.n_violations >= 0 ? j.n_violations : null,
+    t0: Number.isFinite(t0) ? t0 : 0, dur: Number.isFinite(dur) && dur > 0 ? dur : 0,
+    error: typeof j.error === "string" ? j.error : "",
   };
-  xhr.onerror = () => { S.xhr = null; showError("Сеть недоступна", "Не удалось отправить видео. Проверьте, что сервер запущен.", startUpload); };
-  xhr.ontimeout = () => { S.xhr = null; showError("Превышено время ожидания загрузки", "", startUpload); };
-  xhr.onabort = () => { S.xhr = null; setPhase("ready"); pnote("Загрузка отменена."); announce("Загрузка отменена"); };
-  xhr.send(fd);
+}
+async function loadHistory() {
+  clearTimeout(H.timer); H.timer = 0;
+  if (!S.key) { H.err = "nokey"; renderHist(); return; }
+  if (H.busy) { H.again = true; return; }
+  H.busy = true;
+  let r = null, d = null;
+  try {
+    r = await fetch("/api/v1/jobs?limit=50", { headers: { "X-API-Key": S.key }, cache: "no-store" });
+    if (r.ok) d = await r.json();
+  } catch (e) {}
+  H.busy = false;
+  if (r && r.status === 401) { H.err = "badkey"; H.jobs = []; H.byId = {}; }
+  else if (!d || !Array.isArray(d.jobs)) H.err = "net";  // the last list stays, polling goes on
+  else {
+    const before = H.byId;
+    H.jobs = d.jobs.map(normJob).filter(Boolean);
+    H.byId = {};
+    H.jobs.forEach((j) => {
+      H.byId[j.id] = j;
+      const b = before[j.id];
+      if (b && b.status === "processing" && j.status !== "processing" && j.id !== S.jobId)
+        announce((j.name || "Задача " + j.id) + ": " + (j.status === "done" ? "проверка завершена" : "ошибка обработки"));
+    });
+    H.err = ""; H.loaded = true;
+    if (S.jobId && !S.item) jobFileinfo(S.jobId);
+    updQueued();
+  }
+  renderHist();
+  if (H.again) { H.again = false; loadHistory(); return; }
+  // poll only while something is being analysed and the tab is visible
+  if (!document.hidden && H.jobs.some((j) => j.status === "processing")) H.timer = setTimeout(loadHistory, 5000);
+}
+const markHtml = (cls) => '<span class="hmark ' + cls + '" aria-hidden="true"></span>';
+const lcFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+function jobState(j) {
+  if (j.status === "processing") return j.queued ? ["wait", "в очереди"] : ["run", "идёт анализ"];
+  if (j.status === "failed") return ["err", "ошибка" + (j.error ? ": " + j.error : "")];
+  if (j.verdict === "violation") return ["bad", "готово · " + (j.n == null ? "есть нарушения" : j.n + " " + plural(j.n, "нарушение", "нарушения", "нарушений"))];
+  return ["ok", "готово · нарушений нет"];
+}
+function localState(it) {
+  if (it.state === "up") return ["run", "загрузка " + Math.round(it.pct) + " %"];
+  if (it.state === "sent") return ["wait", "в очереди"];
+  if (it.state === "error") return ["err", "не отправлено: " + lcFirst(it.title)];
+  return ["wait", Q.hold || !S.key ? "ждёт API-ключа" : "ждёт загрузки"];
+}
+function rowHtml(attr, cur, mark, name, time, meta, extra) {
+  return '<button type="button" class="hrow" ' + attr + (cur ? ' aria-current="true"' : "") +
+    ' aria-label="' + esc(name + ", " + (time ? time + ", " : "") + meta) + '">' + markHtml(mark) +
+    '<span class="hname" title="' + esc(name) + '">' + esc(name) + '</span><span class="htime">' + esc(time) + "</span>" +
+    '<span class="hmeta">' + esc(meta) + "</span>" + (extra || "") + "</button>";
+}
+function jobRow(j) {
+  const st = jobState(j), name = j.name || "Задача " + j.id;
+  return '<li class="hitem' + (S.jobId === j.id ? " on" : "") + '">' + rowHtml('data-job="' + j.id + '"', S.jobId === j.id, st[0], name, j.t0 ? fmtWhen(j.t0) : "",
+    st[1] + (j.dur ? " · " + fmtLen(j.dur) : "")) + "</li>";
+}
+function localRow(it) {
+  const st = localState(it), lid = ' data-lid="' + it.lid + '"';
+  const link = (act, text) => '<button type="button" class="link" data-hact="' + act + '"' + lid + ">" + text + "</button>";
+  const acts = it.state === "error" ? (it.retry ? link("retry", "Повторить") : "") + link("remove", "Убрать из списка")
+    : it.state === "wait" || it.state === "up" ? link("cancel", "Отменить") : "";
+  return '<li class="hitem' + (S.item === it ? " on" : "") + '">' + rowHtml(lid.trim(), S.item === it, st[0], it.name, "", st[1] + " · " + fsize(it.size),
+    it.state === "up" ? '<span class="hprog" aria-hidden="true"><i style="width:' + it.pct.toFixed(1) + '%"></i></span>' : "") +
+    (acts ? '<div class="hacts">' + acts + "</div>" : "") + "</li>";
+}
+function updRow(it) {
+  // upload progress without rebuilding the list (keeps focus and hover)
+  const row = $("histList").querySelector('.hrow[data-lid="' + it.lid + '"]');
+  if (!row) return;
+  const meta = localState(it)[1] + " · " + fsize(it.size), bar = row.querySelector(".hprog i");
+  row.querySelector(".hmeta").textContent = meta;
+  row.setAttribute("aria-label", it.name + ", " + meta);
+  if (bar) bar.style.width = it.pct.toFixed(1) + "%";
+}
+function renderHist() {
+  const list = $("histList"), note = $("histNote");
+  const local = Q.list.filter((it) => !(it.jobId && H.byId[it.jobId])).reverse();
+  // the list is rebuilt: put keyboard focus back on the same row or action
+  const a = document.activeElement;
+  let sel = "";
+  if (a && list.contains(a)) {
+    if (a.dataset.hact) sel = '[data-hact="' + a.dataset.hact + '"][data-lid="' + a.dataset.lid + '"]';
+    else if (a.dataset.lid) sel = '.hrow[data-lid="' + a.dataset.lid + '"]';
+    else if (a.dataset.job) sel = '.hrow[data-job="' + a.dataset.job + '"]';
+  }
+  list.innerHTML = local.map(localRow).join("") + H.jobs.map(jobRow).join("");
+  if (sel) { const el = list.querySelector(sel); if (el) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } } }
+  H.rows = local.length + H.jobs.length;
+  let msg = "";
+  if (H.err === "nokey") msg = "Введите API-ключ вверху страницы, чтобы увидеть историю проверок.";
+  else if (H.err === "badkey") msg = "Сервер отклонил API-ключ: история недоступна.";
+  else if (H.err === "net") msg = H.loaded ? "Нет связи с сервером: список может быть устаревшим." : "Не удалось загрузить историю.";
+  else if (!H.rows) msg = H.loaded ? "Проверок пока нет. Загруженные видео появятся здесь." : "Загружаем историю…";
+  note.innerHTML = esc(msg) + (H.err === "net" ? ' <button type="button" class="link" data-hact="reload">Повторить</button>' : "");
+  note.hidden = !msg;
+  const active = H.jobs.filter((j) => j.status === "processing").length +
+    local.filter((it) => it.state === "wait" || it.state === "up" || it.state === "sent").length;
+  $("histToggle").innerHTML = (active ? markHtml("run") : "") + "История" +
+    (active ? '<span class="num">· ' + active + " в работе</span>" : H.rows ? '<span class="num hcount">' + H.rows + "</span>" : "");
+  layoutHist();
+}
+function layoutHist() {
+  // start screen: the list sits under the drop zone when it has something; result screen: a panel under the toolbar
+  const working = !$("work").hidden;
+  document.body.classList.toggle("has-hist", H.rows > 0);
+  $("hist").hidden = working ? !H.open : !(H.rows || H.err === "net" || H.err === "badkey");
+  $("histToggle").setAttribute("aria-expanded", String(working && H.open));
+}
+function openFromHistory(id) {
+  const it = Q.list.find((x) => x.jobId === id);  // uploaded here: the local file plays without a download
+  if (it) { openItem(it); return; }
+  const j = H.byId[id];
+  openJob(id, j ? j.t0 : 0);
+}
+function jobFileinfo(id) {
+  const j = H.byId[id];
+  setFileinfo(j && j.name ? j.name : "Задача " + id, j && j.dur ? fmtLen(j.dur) : "");
 }
 
 /* ---------- flow ---------- */
@@ -914,9 +1222,8 @@ function stopJob() {
   S.gen++;
   clearTimeout(S.pollTimer); clearInterval(S.tick); S.tick = 0;
   S.resume = false;
-  if (S.xhr) { S.xhr.onabort = null; S.xhr.abort(); S.xhr = null; }
-  window.onbeforeunload = null;
-  S.jobId = null; S.violations = []; S.active = -1; S.retry = null; S.pending = null;
+  S.item = null; S.jobId = null; S.items = []; S.active = -1; S.retry = null; S.pending = null;
+  $("tbarMsg").hidden = true;
   setUrl(null);
   setTitle(BASE_TITLE);
 }
@@ -925,51 +1232,67 @@ function showWork() {
   $("player").hidden = false;
   $("work").classList.remove("noplayer");
   $("intake").hidden = true;
-  $("work").hidden = false;
   $("intakeMsg").hidden = true;
+  $("tbar").hidden = false;
+  $("work").hidden = false;
+  layoutHist();
 }
 function intakeMsg(title, text) {
   const box = $("intakeMsg");
   box.innerHTML = alertHtml(title, text);
   box.hidden = false;
 }
+function notice(title, text) {
+  // about the chosen files, without replacing the result in view: under the drop zone or under the toolbar
+  const box = $("intake").hidden ? $("tbarMsg") : $("intakeMsg");
+  if (!title) { box.hidden = true; return; }
+  box.innerHTML = alertHtml(title, text);
+  box.hidden = false;
+}
+function setFileinfo(name, extra) {
+  $("fileinfo").textContent = name + (extra ? ", " + extra : "");
+  $("fileinfo").title = name;
+}
 function looksLikeVideo(f) {
   return (f.type && f.type.indexOf("video/") === 0) || /\.(mov|mp4|m4v|avi|mkv|webm|3gp|qt)$/i.test(f.name || "");
 }
-const busy = () => S.phase === "uploading" || S.phase === "processing" || S.phase === "loading";
-function chooseFile(f) {
-  if (!f || busy()) return;
-  if (!looksLikeVideo(f)) {
-    if (!$("work").hidden) showError("Это не видеофайл", "Выберите запись с камеры в формате .mov или другом видеоформате.", null);
-    else intakeMsg("Это не видеофайл", "Выберите запись с камеры в формате .mov или другом видеоформате.");
-    return;
+function chooseFiles(list) {
+  const files = Array.prototype.slice.call(list || []);
+  if (!files.length) return;
+  if (CAT.open) leaveCatalog();
+  const bad = files.filter((f) => !looksLikeVideo(f));
+  const added = files.filter(looksLikeVideo).map(enqueue);
+  if (added.length) {
+    if (added.length > 1) H.open = true;  // the queue is visible next to the first video
+    openItem(added[0]);
+    pump();
   }
+  if (bad.length) {
+    const names = bad.map((f) => f.name || "без имени").join(", ");
+    if (added.length) notice("Пропущены файлы, не похожие на видео", names);
+    else notice("Это не видеофайл", (files.length > 1 ? names + ". " : "") + "Выберите запись с камеры в формате .mov или другом видеоформате.");
+  }
+}
+function openItem(it) {
   stopJob();
+  S.item = it;
   if (S.objUrl) URL.revokeObjectURL(S.objUrl);
-  S.file = f;
-  S.objUrl = URL.createObjectURL(f);
+  S.objUrl = URL.createObjectURL(it.file);
   showWork();
   setVideo(S.objUrl);
-  $("fileinfo").textContent = f.name + ", " + fsize(f.size);
-  $("fileinfo").title = f.name;
-  setPhase("ready");
-  announce("Выбран файл " + f.name + ". Нажмите «Проверить видео».");
-  // phones: the player fills the screen, so bring the next step into view
-  if (window.matchMedia && matchMedia("(max-width: 819px)").matches) {
-    const a = stage.querySelector(".actions");
-    if (a) setTimeout(() => a.scrollIntoView({ block: "nearest", behavior: behavior() }), 50);
-  }
+  setFileinfo(it.name, fsize(it.size));
+  showItem(it);
+  renderHist();
 }
 function openJob(id, t0, resume) {
   stopJob();
   S.resume = !!resume;
   if (S.objUrl) { URL.revokeObjectURL(S.objUrl); S.objUrl = null; }
-  S.file = null;
   S.jobId = id; S.t0 = t0 || Date.now();
   showWork();
-  $("fileinfo").textContent = "Задача " + id;
-  $("fileinfo").title = "";
+  jobFileinfo(id);
   setUrl(id);
+  renderHist();
   const go = () => { setVideo(videoUrl(id)); setPhase("loading"); startPolling(id); };
   if (!S.key) {
     setVideo(null);
@@ -983,14 +1306,15 @@ function resetAll(keepLast) {
   stopJob();
   if (!keepLast) LS.del("lastJob");
   if (S.objUrl) { URL.revokeObjectURL(S.objUrl); S.objUrl = null; }
-  S.file = null; S.phase = "idle";
+  S.phase = "idle";
   setVideo(null);
   stage.innerHTML = "";
   document.body.classList.remove("working");
   $("work").hidden = true;
+  $("tbar").hidden = true;
   $("intake").hidden = false;
   $("intakeMsg").hidden = true;
-  refreshLast();
+  renderHist();
   $("pick").focus();
 }
 
@@ -1011,7 +1335,7 @@ async function copyLink(btn) {
 const lb = $("lb");
 let lbAt = null;
 function openLightbox(i, j) {
-  const v = S.violations[i], f = v && v.frames[j];
+  const v = S.items[i], f = v && v.frames[j];
   if (!f) return;
   lbAt = { i, j };
   $("lbBox").hidden = true;
@@ -1024,10 +1348,11 @@ function openLightbox(i, j) {
 }
 function placeLbBox() {
   // the lightbox image is not letterboxed, so its own box is the picture
-  const box = $("lbBox"), img = $("lbImg"), v = lbAt && S.violations[lbAt.i], r = v && v.region;
+  const box = $("lbBox"), img = $("lbImg"), v = lbAt && S.items[lbAt.i], r = v && v.region;
   if (!r || !img.complete || !img.offsetWidth || !img.offsetHeight) { box.hidden = true; return; }
   placeRect(box, r, img.offsetLeft, img.offsetTop, img.offsetWidth, img.offsetHeight);
-  box.firstElementChild.textContent = String(lbAt.i + 1);
+  box.firstElementChild.textContent = v.label;
+  box.classList.toggle("hint", v.kind === "h");
   box.hidden = false;
 }
 $("lbImg").addEventListener("load", placeLbBox);
@@ -1177,17 +1502,47 @@ document.addEventListener("click", (e) => {
 catBody.addEventListener("click", (e) => { if (e.target.closest("[data-cat='retry']")) loadCatalog(); });
 
 /* ---------- events ---------- */
-$("pick").addEventListener("click", () => $("file").click());
-$("file").addEventListener("change", () => { const f = $("file").files[0]; $("file").value = ""; chooseFile(f); });
-$("openLast").addEventListener("click", () => { const last = readLast(); if (last) openJob(last.id, last.t0); });
+const pickFiles = () => $("file").click();
+$("pick").addEventListener("click", pickFiles);
+$("newVideo").addEventListener("click", pickFiles);
+$("file").addEventListener("change", () => { const fs = Array.prototype.slice.call($("file").files || []); $("file").value = ""; chooseFiles(fs); });
+$("histToggle").addEventListener("click", () => {
+  H.open = !H.open;
+  LS.set("histOpen", H.open ? "1" : "0");
+  layoutHist();
+  if (H.open) loadHistory();
+});
+$("histList").addEventListener("click", (e) => {
+  const act = e.target.closest("[data-hact]");
+  if (act) {
+    const it = findItem(act.dataset.lid);
+    if (!it) return;
+    if (act.dataset.hact === "retry") retryItem(it);
+    else if (act.dataset.hact === "remove") removeItem(it);
+    else if (act.dataset.hact === "cancel") cancelItem(it);
+    return;
+  }
+  const row = e.target.closest(".hrow");
+  if (!row) return;
+  if (row.getAttribute("aria-current") !== "true") {
+    if (row.dataset.job) openFromHistory(row.dataset.job);
+    else { const it = findItem(row.dataset.lid); if (it) openItem(it); }
+  }
+  // phones: the panel would push the player off screen, so it folds after a choice
+  if (narrow()) { H.open = false; layoutHist(); }
+  const tb = $("tbar");
+  if (!tb.hidden && tb.getBoundingClientRect().top < 0) tb.scrollIntoView({ block: "start", behavior: behavior() });
+});
+$("histNote").addEventListener("click", (e) => { if (e.target.closest("[data-hact='reload']")) loadHistory(); });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && S.key && H.jobs.some((j) => j.status === "processing")) loadHistory();
+});
 stage.addEventListener("click", (e) => {
   const act = e.target.closest("[data-act]");
   if (act) {
     const a = act.dataset.act;
-    if (a === "go") startUpload();
-    else if (a === "change") $("file").click();
-    else if (a === "cancel") { if (S.xhr) S.xhr.abort(); }
-    else if (a === "reset") resetAll();
+    if (a === "new") pickFiles();
+    else if (a === "cancel") cancelItem(S.item);
     else if (a === "retry") { if (S.retry) S.retry(); }
     else if (a === "copy") copyLink(act);
     return;
@@ -1205,31 +1560,31 @@ stage.addEventListener("click", (e) => {
   }
 });
 const hasFiles = (e) => !!(e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") !== -1);
+const dragOver = (on) => { $("drop").classList.toggle("over", on); $("tbar").classList.toggle("over", on); };
 ["dragenter", "dragover"].forEach((ev) => window.addEventListener(ev, (e) => {
   if (!hasFiles(e)) return;
   e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = busy() ? "none" : "copy";
-  if (!busy()) $("drop").classList.add("over");
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  dragOver(true);
 }));
-window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("drop").classList.remove("over"); });
+window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) dragOver(false); });
 window.addEventListener("drop", (e) => {
   if (!hasFiles(e)) return;
   e.preventDefault();
-  $("drop").classList.remove("over");
-  if (busy() || !e.dataTransfer.files.length) return;
-  if (CAT.open) leaveCatalog();
-  chooseFile(e.dataTransfer.files[0]);
+  dragOver(false);
+  chooseFiles(e.dataTransfer.files);
 });
 
 /* ---------- start ---------- */
 renderKey(false);
+H.open = LS.get("histOpen") === "1";  // folded by default on the result screen; a batch upload unfolds it
 (function init() {
   const jobParam = params.get("job");
   const last = readLast();
-  if (jobParam && ID_RE.test(jobParam)) { openJob(jobParam, last && last.id === jobParam ? last.t0 : 0); return; }
-  if (jobParam) { setUrl(null); intakeMsg("Некорректная ссылка на результат", "Проверьте ссылку или загрузите видео заново."); }
-  else if (last && last.status === "processing") { openJob(last.id, last.t0, true); return; }
-  refreshLast();
+  if (jobParam && ID_RE.test(jobParam)) openJob(jobParam, last && last.id === jobParam ? last.t0 : 0);
+  else if (jobParam) { setUrl(null); intakeMsg("Некорректная ссылка на результат", "Проверьте ссылку или загрузите видео заново."); }
+  else if (last && last.status === "processing") openJob(last.id, last.t0, true);
+  loadHistory();
 })();
 route();
 CAT.booted = true;
