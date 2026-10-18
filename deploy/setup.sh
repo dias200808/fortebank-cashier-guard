@@ -25,8 +25,8 @@ fi
 
 # Model choice by VRAM (override with VLM_MODEL=... bash deploy/setup.sh)
 if [ -z "${VLM_MODEL:-}" ]; then
-  # Qwen3.5-9B (FP8 weights, Marlin on Ampere): A/B on 19 dataset videos found as much or more than Qwen3-VL-8B
-  if   [ "$VRAM_MB" -ge 22000 ]; then VLM_MODEL="RedHatAI/Qwen3.5-9B-FP8-dynamic"; FALLBACK="Qwen/Qwen3-VL-8B-Instruct-FP8"
+  # Rules and thresholds are tuned on Qwen3-VL-8B; Qwen3.5-9B-FP8 is a tested alternative (deploy/switch_vlm.sh)
+  if   [ "$VRAM_MB" -ge 22000 ]; then VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct-FP8"; FALLBACK="Qwen/Qwen3-VL-8B-Instruct"
   elif [ "$VRAM_MB" -ge 11000 ]; then VLM_MODEL="Qwen/Qwen3-VL-4B-Instruct";     FALLBACK=""
   else                                VLM_MODEL="Qwen/Qwen3-VL-2B-Instruct";     FALLBACK=""
   fi

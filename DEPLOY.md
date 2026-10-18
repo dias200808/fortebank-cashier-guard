@@ -6,7 +6,7 @@
 
 | Видеопамять | Модель |
 |---|---|
-| ≥ 22 ГБ (3090/4090/A5000…) | Qwen3.5-9B (FP8, `RedHatAI/Qwen3.5-9B-FP8-dynamic`; если недоступна — Qwen3-VL-8B-Instruct-FP8) |
+| ≥ 22 ГБ (3090/4090/A5000…) | Qwen3-VL-8B-Instruct-FP8 (под неё настроены правила); альтернатива — Qwen3.5-9B-FP8 через `switch_vlm.sh` |
 | 11–22 ГБ | Qwen3-VL-4B-Instruct |
 | < 11 ГБ | Qwen3-VL-2B-Instruct |
 
